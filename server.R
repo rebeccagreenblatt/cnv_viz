@@ -1,5 +1,3 @@
-cnv_sample <- read.table(file = '../../cnv_viz/CPDV182943_xGen_20001_CapB_H3_PAL_20014_SEQ_200017_S7.cn.filtered.tsv', sep = '\t', header = TRUE)
-
 function(input, output, session) {
   
   cnr <- read.table(file = '../../cnv_viz/CPDV182943_xGen_20001_CapB_H3_PAL_20014_SEQ_200017_S7.final.cnr', sep = '\t', header = TRUE)
@@ -10,9 +8,16 @@ function(input, output, session) {
     summarise(s = min(start), e = max(end),
               mean_log2 = weighted.mean(log2, weight),
               total_weight = sum(weight))%>%
-    mutate(m = (s+e)/2)
+    mutate(m = (s+e)/2, cn = round((2^mean_log2)*2))
   
   cns <- read.table("../../cnv_viz/CPDV182943_xGen_20001_CapB_H3_PAL_20014_SEQ_200017_S7.final.cns", header = TRUE)
+  gene_ranges <- c()
+  for(i in 1:nrow(cns)) { 
+    if(unlist(strsplit(cns$gene[i], ","))[1] != "-") {
+      gene_ranges <- c(gene_ranges, paste0(unlist(strsplit(cns$gene[i], ","))[1], " - ", tail(unlist(strsplit(cns$gene[i], ",")),1))) }
+    else gene_ranges <- c(gene_ranges, "-")
+  }
+  cns$gene_ranges <- gene_ranges
   gl <- filter(cns, log2 < -1 | log2 > 1)
   
   chromosomes <- c(paste0("chr", "1":"22"), "chrX", "chrY")
@@ -27,17 +32,19 @@ function(input, output, session) {
     plot <- plot_ly(type = 'scatter', mode = 'markers') %>%
       add_trace(x = get(chromosomes[i])$m, 
                 y = get(chromosomes[i])$mean_log2, 
-                text = get(chromosomes[i])$gene,
+                text = paste0(get(chromosomes[i])$gene),
                 hoverinfo = 'text',
                 marker = list(color='blue', size = get(chromosomes[i])$total_weight),
                 showlegend = F) %>%
       add_segments(x = 0, xend = max(get(chromosomes[i])$m), y = -1, yend = -1, line = list(color = "green", width = 1, dash = "dot"), showlegend = F) %>%
-      add_segments(x = 0, xend = max(get(chromosomes[i])$m), y = 3, yend = 3, line = list(color = "green", width = 1, dash = "dot"), showlegend = F) %>%
+      add_segments(x = 0, xend = max(get(chromosomes[i])$m), y = 1, yend = 1, line = list(color = "green", width = 1, dash = "dot"), showlegend = F) %>%
       layout(annotations = list(x = 40e6 , y = 6, text = chromosomes[i], showarrow= F), yaxis=list(title = "Copy number ratio", titlefont = list(size = 8), range = c(-2, 6)), xaxis= list(range = c(0,250e6)))
     
     if(nrow(get(paste0(chromosomes[i], "_gl")))>0){
       for(j in 1:nrow(get(paste0(chromosomes[i], "_gl")))){
-        plot <- plot %>% add_segments(x = get(paste0(chromosomes[i], "_gl"))$start[j], xend = get(paste0(chromosomes[i], "_gl"))$end[j], y = get(paste0(chromosomes[i], "_gl"))$log2[j], yend = get(paste0(chromosomes[i], "_gl"))$log2[j], line = list(color = "red", width = 6), showlegend = F)
+        plot <- plot %>% add_segments(x = get(paste0(chromosomes[i], "_gl"))$start[j], xend = get(paste0(chromosomes[i], "_gl"))$end[j], y = get(paste0(chromosomes[i], "_gl"))$log2[j], yend = get(paste0(chromosomes[i], "_gl"))$log2[j], 
+                                      line = list(color = "red", width = 6), showlegend = F,
+                                      name = get(paste0(chromosomes[i], "_gl"))$gene_ranges[j])
       }
     }
     
@@ -74,18 +81,26 @@ function(input, output, session) {
   gene <- reactive({ filter(by_gene, m == d()) %>% select(chromosome, gene, s, e) })
   gene_data <- reactive ({ filter(cnr_target, gene == gene()$gene[1]) })
   
+  cn <- reactive({ by_gene[by_gene$gene == gene()$gene[1],]$cn[1] })
+  copy <- reactive({ ifelse(cn() == 1, "copy", "copies")})
+  
   output$gene_plot <- renderPlotly({ 
     req(d())
+    req(nrow(gene_data()) > 0)
       plot_ly(height = 250, type = 'scatter', mode = 'markers') %>%
         add_trace(x = gene_data()$m_probe, 
                   y = gene_data()$log2, 
                   hoverinfo = 'text',
                   marker = list(color='yellow', size = gene_data()$weight*20),
                   showlegend = F) %>%
-        add_segments(x = min(gene_data()$s), xend = max(gene_data()$e), y = -1, yend = -1, line = list(color = "orange"), showlegend = F) %>%
-        add_segments(x = min(gene_data()$s), xend = max(gene_data()$e), y = 3, yend = 3, line = list(color = "orange"), showlegend = F) %>%
-        layout(title = gene()$gene[1], xaxis = list(tickfont = list(size = 6), range = min(gene_data()$s), max(gene_data()$e)), yaxis=list(tickfont = list(size = 6), title = "Copy number ratio", titlefont = list(size = 8), range = c(-3, 6)))
+        add_segments(x = min(gene_data()$s), xend = max(gene_data()$e), y = -1, yend = -1, line = list(color = "orange", width = 1, dash = "dot"), showlegend = F) %>%
+        add_segments(x = min(gene_data()$s), xend = max(gene_data()$e), y = 1, yend = 1, line = list(color = "orange", width = 1, dash = "dot"), showlegend = F) %>%
+        layout(title = paste0(gene()$gene[1], " (", cn(), " ", copy(),")"), xaxis = list(tickfont = list(size = 6), range = min(gene_data()$s), max(gene_data()$e)), yaxis=list(tickfont = list(size = 6), title = "Copy number ratio", titlefont = list(size = 8), range = c(-3, 6)))
     }) 
   
   
 }
+
+# EGFR v3(exons 1-7) - ratio 
+# SNP backbone: Using SNP frequency to infer tumor percentage
+# - https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4383288/

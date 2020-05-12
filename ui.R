@@ -13,7 +13,8 @@ fluidPage(
       selectInput(inputId = "chr",
                   label = "",
                   choices = choices,
-                  selected = "all")
+                  selected = "all"),
+      a("karyotype",target="_blank",href="CPDV182943_xGen_20001_CapB_H3_PAL_20014_SEQ_200017_S7.final-diagram.pdf")
     ),
     
     mainPanel(width = 10,
