@@ -2,6 +2,9 @@ library(shiny)
 library(dplyr)
 library(plotly)
 
+karyotype_filename <- "CPDV183182_20179_D1_20007_B_20184_200206_S4.final-diagram.pdf"
+sample_name <- gsub(".final-diagram.pdf", "", karyotype_filename)
+
 choices <- c("all", paste0("chr", "1":"22"), "chrX", "chrY")
 
 fluidPage(
@@ -14,14 +17,14 @@ fluidPage(
                   label = "",
                   choices = choices,
                   selected = "all"),
-      a("karyotype",target="_blank",href="CPDV182943_xGen_20001_CapB_H3_PAL_20014_SEQ_200017_S7.final-diagram.pdf")
+      a("karyotype",target="_blank",href=karyotype_filename)
     ),
     
     mainPanel(width = 10,
-      h2("Sample"),
+      h2(sample_name),
       plotlyOutput("chr_plot", width = "100%"),
       br(),
-      plotlyOutput("gene_plot", width = "100%")
+      plotlyOutput("selected_plot")
     )
   )
     
