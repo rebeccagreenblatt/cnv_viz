@@ -64,8 +64,8 @@ function(input, output, session) {
     assign(paste0(chromosomes[i],"_plot"), plot)
     
   }
-  
-  all <- subplot(chr1_plot, chr2_plot, chr3_plot,
+
+  all_plot <- subplot(chr1_plot, chr2_plot, chr3_plot,
           chr4_plot, chr5_plot, chr6_plot,
           chr7_plot, chr8_plot, chr9_plot,
           chr10_plot, chr11_plot, chr12_plot,
@@ -73,20 +73,11 @@ function(input, output, session) {
           chr16_plot, chr17_plot, chr18_plot,
           chr19_plot, chr20_plot, chr21_plot,
           chr22_plot, chrX_plot, chrY_plot,
-          nrows=9, shareY = TRUE, shareX = TRUE) %>% 
+          nrows=9, shareY = TRUE, shareX = TRUE) %>%
     layout(autosize = F, height = 1200)
+
   
-  plot_todisplay <- reactive({ switch(input$chr,
-                            "all" = all,
-                            "chr1" = chr1_plot, "chr2" = chr2_plot, "chr3" = chr3_plot,
-                            "chr4" = chr4_plot, "chr5" = chr5_plot, "chr6" = chr6_plot,
-                            "chr7" = chr7_plot, "chr8" = chr8_plot, "chr9" = chr9_plot,
-                            "chr10" = chr10_plot, "chr11" = chr11_plot, "chr12" = chr12_plot,
-                            "chr13" = chr13_plot, "chr14" = chr14_plot, "chr15" = chr15_plot,
-                            "chr16" = chr16_plot, "chr17" = chr17_plot, "chr18" = chr18_plot,
-                            "chr19" = chr19_plot, "chr20" = chr20_plot, "chr21" = chr21_plot,
-                            "chr22" = chr22_plot, "chrX" = chrX_plot, "chrY" = chrY_plot
-  ) })
+  plot_todisplay <- reactive({ get(paste0(input$chr, "_plot")) })
   
   output$chr_plot <- renderPlotly(plot_todisplay())
   
