@@ -2,6 +2,7 @@ library(shiny)
 library(dplyr)
 library(plotly)
 
+
 karyotype_filename <- "CPDV183182_20179_D1_20007_B_20184_200206_S4.final-diagram.pdf"
 sample_name <- gsub(".final-diagram.pdf", "", karyotype_filename)
 

@@ -1,7 +1,9 @@
-path <-"../../cnv_viz_demo/rg_viz"
-test_files <- list.files(path)
-cnr_filename <- paste0(path, "/", test_files[158])
-cns_filename <- paste0(path, "/", test_files[159])
+#path <-"../../cnv_viz_demo/rg_viz"
+#test_files <- list.files(path)
+#cnr_filename <- paste0(path, "/", test_files[158])
+#cns_filename <- paste0(path, "/", test_files[159])
+cnr_filename <- "CPDV183182_20179_D1_20007_B_20184_200206_S4.final.cnr"
+cns_filename <- "CPDV183182_20179_D1_20007_B_20184_200206_S4.final.cns"
 
 
 function(input, output, session) {
