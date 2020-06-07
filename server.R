@@ -1,10 +1,9 @@
-#path <-"../../cnv_viz_demo/rg_viz"
-#test_files <- list.files(path)
-#cnr_filename <- paste0(path, "/", test_files[158])
-#cns_filename <- paste0(path, "/", test_files[159])
-cnr_filename <- "CPDV183182_20179_D1_20007_B_20184_200206_S4.final.cnr"
-cns_filename <- "CPDV183182_20179_D1_20007_B_20184_200206_S4.final.cns"
-
+path <-"../../cnv_viz_demo/rg_viz"
+test_files <- list.files(path)
+cnr_filename <- paste0(path, "/", test_files[158])
+cns_filename <- paste0(path, "/", test_files[159])
+#cnr_filename <- "CPDV183182_20179_D1_20007_B_20184_200206_S4.final.cnr"
+#cns_filename <- "CPDV183182_20179_D1_20007_B_20184_200206_S4.final.cns"
 
 function(input, output, session) {
   
@@ -13,9 +12,9 @@ function(input, output, session) {
   })
   
   cnr <- read.table(file = cnr_filename, sep = '\t', header = TRUE)
-  cnr_target <- filter(cnr, !gene %in% c("Antitarget", ".")) 
+  cnr_target <- filter(cnr, !gene %in% c("Antitarget", "."))
   cnr_target <- mutate(cnr_target, m_probe = (start + end)/2)
-  
+
   by_gene <- cnr_target %>% group_by(chromosome, gene) %>%
     summarise(s = min(start), e = max(end),
               mean_log2 = weighted.mean(log2, weight),
@@ -48,10 +47,10 @@ function(input, output, session) {
                 y = get(chromosomes[i])$mean_log2, 
                 text = paste0(get(chromosomes[i])$gene),
                 hoverinfo = 'text',
-                marker = list(line = list(color = "green"), color=colors, size = 3*log(get(chromosomes[i])$total_weight)),
+                marker = list(line = list(color = "green"), color=colors, size = 3*log(get(chromosomes[i])$total_weight+1)),
                 showlegend = F) %>%
-      add_segments(x = 0, xend = max(get(chromosomes[i])$m), y = -1, yend = -1, line = list(color = "green", width = 1, dash = "dot"), showlegend = F) %>%
-      add_segments(x = 0, xend = max(get(chromosomes[i])$m), y = 1, yend = 1, line = list(color = "green", width = 1, dash = "dot"), showlegend = F) %>%
+      add_segments(x = 0, xend = max(get(chromosomes[i])$m), y = -1, yend = -1, line = list(color = "gray", width = 1, dash = "dot"), showlegend = F) %>%
+      add_segments(x = 0, xend = max(get(chromosomes[i])$m), y = 1, yend = 1, line = list(color = "gray", width = 1, dash = "dot"), showlegend = F) %>%
       layout(annotations = list(x = 40e6 , y = 6, text = chromosomes[i], showarrow= F), yaxis=list(title = "Copy number ratio", titlefont = list(size = 8), range = c(-3, 6)), xaxis= list(range = c(0,250e6)))
     
     if(nrow(get(paste0(chromosomes[i], "_gl")))>0){
@@ -83,13 +82,28 @@ function(input, output, session) {
   
   output$chr_plot <- renderPlotly(plot_todisplay())
   
+  observe({
+    updateSelectInput(session, "chr", selected = as.character(by_gene[by_gene$gene==input$gene,]$chromosome[1]))
+  })
+  
   d <- reactive ({ event_data("plotly_click")[[3]] })
-  gene <- reactive({ filter(by_gene, m == d()) %>% select(chromosome, gene, s, e) })
-  gene_data <- reactive ({ filter(cnr_target, gene == gene()$gene[1]) })
+  
+  observeEvent(event_data("plotly_click"), {
+    updateSelectizeInput(session, "gene", selected = by_gene[by_gene$m == d(),]$gene[1])
+  })
+  
+  observeEvent(input$chr, {
+    updateSelectizeInput(session, "gene", selected = 
+                           ifelse(by_gene[by_gene$gene == input$gene,"chromosome"][1] == input$chr, input$gene, ""))
+  })
+  
+  gene_data <- eventReactive(input$gene,{
+    filter(cnr_target, gene == input$gene)
+  })
   
   test1 <- reactive({ nrow(gene_data()) })
   
-  cn <- reactive({ by_gene[by_gene$gene == gene()$gene[1],]$cn[1] })
+  cn <- reactive({ by_gene[by_gene$gene == input$gene,]$cn[1] })
   copy <- reactive({ ifelse(cn() == 1, "copy", "copies")})
   
   seg <- reactive({ filter(cns, start == d() | end == d()) })
@@ -99,19 +113,21 @@ function(input, output, session) {
   
   test2 <- reactive({ nrow(seg_gene_dat()) })
   
+  plot_check <- reactive({ max(input$gene != "", d()) >= 1 })
+  
   output$selected_plot <- renderPlotly({
-    req(d())
-    if(test1() > 0){
+    req(plot_check(), cancelOutput = TRUE)
+    if(test1() > 0 & input$chr != "all"){
         plot_ly(height = 250, type = 'scatter', mode = 'markers') %>%
           add_trace(x = gene_data()$m_probe, 
                     y = gene_data()$log2, 
                     hoverinfo = 'text',
                     marker = list(color='yellow', size = gene_data()$weight*15),
                     showlegend = F) %>%
-          add_segments(x = min(gene_data()$start), xend = max(gene_data()$end), y = -1, yend = -1, line = list(color = "orange", width = 1, dash = "dot"), showlegend = F) %>%
-          add_segments(x = min(gene_data()$start), xend = max(gene_data()$end), y = 1, yend = 1, line = list(color = "orange", width = 1, dash = "dot"), showlegend = F) %>%
-          layout(title = paste0(gene()$gene[1], " (", cn(), " ", copy(),")"), xaxis = list(tickfont = list(size = 6), range = min(gene_data()$s), max(gene_data()$e)), yaxis=list(tickfont = list(size = 6), title = "Copy number ratio", titlefont = list(size = 8), range = c(-3, 6)))
-      } else if(test2() > 0){
+          add_segments(x = min(gene_data()$start), xend = max(gene_data()$end), y = -1, yend = -1, line = list(color = "gray", width = 1, dash = "dot"), showlegend = F) %>%
+          add_segments(x = min(gene_data()$start), xend = max(gene_data()$end), y = 1, yend = 1, line = list(color = "gray", width = 1, dash = "dot"), showlegend = F) %>%
+          layout(title = paste0(gene_data()$gene[1], " (", cn(), " ", copy(),")"), xaxis = list(tickfont = list(size = 6), range = min(gene_data()$s), max(gene_data()$e)), yaxis=list(tickfont = list(size = 6), title = "Copy number ratio", titlefont = list(size = 8), range = c(-3, 6)))
+      } else if(test2() > 0 & input$chr != "all"){
           plot_ly(height = 250, type = 'scatter', mode = 'markers') %>%
             add_trace(x = seg_gene_dat()$m_probe, 
                       y = seg_gene_dat()$log2, 
@@ -119,10 +135,10 @@ function(input, output, session) {
                       text = seg_gene_dat()$gene,
                       marker = list(color='red', size = seg_gene_dat()$weight*15),
                       showlegend = F) %>%
-            add_segments(x = min(seg_gene_dat()$start), xend = max(seg_gene_dat()$end), y = -1, yend = -1, line = list(color = "orange", width = 1, dash = "dot"), showlegend = F) %>%
-            add_segments(x = min(seg_gene_dat()$start), xend = max(seg_gene_dat()$end), y = 1, yend = 1, line = list(color = "orange", width = 1, dash = "dot"), showlegend = F) %>%
+            add_segments(x = min(seg_gene_dat()$start), xend = max(seg_gene_dat()$end), y = -1, yend = -1, line = list(color = "gray", width = 1, dash = "dot"), showlegend = F) %>%
+            add_segments(x = min(seg_gene_dat()$start), xend = max(seg_gene_dat()$end), y = 1, yend = 1, line = list(color = "gray", width = 1, dash = "dot"), showlegend = F) %>%
             layout(title = paste0("segment"), xaxis = list(tickfont = list(size = 6), range = min(seg_gene_dat()$s), max(seg_gene_dat()$e)), yaxis=list(tickfont = list(size = 6), title = "Copy number ratio", titlefont = list(size = 8), range = c(-3, 6)))
       } 
-  })
+  }) 
   
 }
