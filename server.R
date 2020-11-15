@@ -77,8 +77,14 @@ function(input, output, session) {
           nrows=9, shareY = TRUE, shareX = TRUE) %>%
     layout(autosize = F, height = 1200)
 
-  
   plot_todisplay <- reactive({ get(paste0(input$chr, "_plot")) })
+  
+  #trying to add rectangle highlighter
+  #first get input gene start and stop location
+  # gene_start <- eventReactive(input$gene, { by_gene[by_gene$gene == input$gene,"s"] })
+  # gene_stop <- eventReactive(input$gene, { by_gene[by_gene$gene == input$gene, "e"] })
+  # final_plot <- eventReactive(input$gene, { plot_todisplay() %>% add_segments(y = -3, yend = 6, x = gene_start(), yend = gene_end(), line = list(opacity = 0.2, color = "purple")) })
+  # output$chr_plot <- renderPlotly({ final_plot() })
   
   output$chr_plot <- renderPlotly(plot_todisplay())
   
@@ -116,7 +122,7 @@ function(input, output, session) {
   plot_check <- reactive({ max(input$gene != "", d()) >= 1 })
   
   output$selected_plot <- renderPlotly({
-    req(plot_check(), cancelOutput = TRUE)
+    req(plot_check())
     if(test1() > 0 & input$chr != "all"){
         plot_ly(height = 250, type = 'scatter', mode = 'markers') %>%
           add_trace(x = gene_data()$m_probe, 
