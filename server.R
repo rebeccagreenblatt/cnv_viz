@@ -175,11 +175,10 @@ function(input, output, session) {
   output$cbioOutput <- DT::renderDataTable({
     req(nchar(input$cancer)>0)
     datatable(cbio_dat() %>% group_by(hugoGeneSymbol) %>% 
-    summarise(gain = round(sum(value ==1)/n(),2), 
-              amp = round(sum(value == 2)/n(),2), 
-              hetero_del = round(sum(value == -1)/n(),2), 
-              homo_del = round(sum(value == -2)/n(),2), 
-              count= n()),
+    summarise(Gain = round(sum(value ==1)/n(),2), 
+              Amplification = round(sum(value == 2)/n(),2), 
+              ShallowDeletion = round(sum(value == -1)/n(),2), 
+              DeepDeletion = round(sum(value == -2)/n(),2)),
     rownames = FALSE)
     })
   
