@@ -51,7 +51,7 @@ fluidPage(
                           br(), br(), 
                           #a("Launch GISTIC", target = "_blank", href = 'http://portals.broadinstitute.org/tcga/gistic/browseGisticByGene#'),
                           #br(), br(), 
-                          img(src = "cnviz_legend.png", width = "100%"),
+                          img(src = "unadjusted_legend.jpg", width = "100%"),
                           br(), br()
                         ),
                         mainPanel(
@@ -75,12 +75,16 @@ fluidPage(
                                          choices = genes,
                                          selected = ""),
                           br(), 
-                          img(src = "adjusted_legend.png", width = "100%")
+                          img(src = "adjusted_legend.jpg", width = "100%")
                         ),
                         mainPanel(
                           h3(sample_name),
+                          tableOutput("meta"),
+                          textOutput("comment"),
+                          br(),
                           plotlyOutput("adj_chr_plot", width = "100%"),
                           textOutput("adj_copies"),
+                          dataTableOutput("mutations"),
                           br(),
                           conditionalPanel("input.adj_chr != 'all'", plotlyOutput("adj_selected_plot"))
                         )

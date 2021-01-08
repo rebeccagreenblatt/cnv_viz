@@ -7,6 +7,12 @@
 cnr_filename <- "../../1218_rg_cnv_viz/CPDV193638.final.cnr"
 cns_filename <- "../../1218_rg_cnv_viz/CPDV193638.final.cns"
 
+green <- "#009E73" # normal
+blue <- "#0072B2" # out of range genes
+pink <- "#CC79A7" #mutation
+orange <- "#D55E00" #segment
+black <- "#000000" #LOH
+
 library(cBioPortalData)
 cbio <- cBioPortal()
 cbio_studies <- read.csv("../cbio_study_names.csv")
@@ -67,9 +73,9 @@ function(input, output, session) {
     chr_gl <- filter(gl, chromosome == chromosomes[i])
     assign(paste0(chromosomes[i], "_gl"), chr_gl)
     
-    colors <- ifelse(get(chromosomes[i])$mean_log2 > 0.32 | get(chromosomes[i])$mean_log2 < -0.41, "blue", 
+    colors <- ifelse(get(chromosomes[i])$mean_log2 > 0.32 | get(chromosomes[i])$mean_log2 < -0.41, blue, 
                      ifelse(get(chromosomes[i])$pink == 1, "hotpink", "white"))
-    colors2 <- ifelse(colors == "white", "green", colors) #what?!!!
+    colors2 <- ifelse(colors == "white", green, colors) #what?!!!
     
     plot <- plot_ly(source = "a", type = 'scatter', mode = 'markers') %>%
       add_trace(x = get(chromosomes[i])$m, 
@@ -77,7 +83,7 @@ function(input, output, session) {
                 text = paste0(get(chromosomes[i])$gene),
                 hoverinfo = 'text',
                 marker = list(color = colors, 
-                              line = list(color = "green"), 
+                              line = list(color = green), 
                               #line = list(color = colors2),
                               size = 3*log(get(chromosomes[i])$total_weight+1)),
                 showlegend = F) %>%
@@ -88,7 +94,7 @@ function(input, output, session) {
     if(nrow(get(paste0(chromosomes[i], "_gl")))>0){
       for(j in 1:nrow(get(paste0(chromosomes[i], "_gl")))){
         plot <- plot %>% add_segments(x = get(paste0(chromosomes[i], "_gl"))$start[j], xend = get(paste0(chromosomes[i], "_gl"))$end[j], y = get(paste0(chromosomes[i], "_gl"))$log2[j], yend = get(paste0(chromosomes[i], "_gl"))$log2[j], 
-                                      line = list(color = "red", width = 3), showlegend = F,
+                                      line = list(color = orange, width = 3), showlegend = F,
                                       name = get(paste0(chromosomes[i], "_gl"))$gene_ranges[j])
         #name = get(paste0(chromosomes[i], "_gl"))$gene)
       }
@@ -196,11 +202,11 @@ function(input, output, session) {
 }
   
   ## adjusted
-  adj_bygene <- read.csv("../../1218_rg_cnv_viz/CPDV193638_genes.csv") %>% filter(gene.symbol != "Antitarget")
+  adj_bygene <- read.csv("../../1218_rg_cnv_viz/CPDV193638_genes.csv") %>% filter(!(gene.symbol %in% c("Antitarget", ".")))
   colnames(adj_bygene)[colnames(adj_bygene) == "gene.symbol"] <- "gene"
   colnames(adj_bygene)[colnames(adj_bygene) == "chr"] <- "chromosome"
   colnames(adj_bygene)[colnames(adj_bygene) == "number.targets"] <- "total_weight"
-  adj_bygene$mean_log2 <- log(adj_bygene$C/2, 2)
+  adj_bygene$mean_log2 <- round(log(adj_bygene$C/2, 2),2)
   adj_bygene$mean_log2 <- ifelse(adj_bygene$C == 0, -2, adj_bygene$mean_log2)
   
   adj_cns <- read.table("../../1218_rg_cnv_viz/CPDV193638_dnacopy.seg", sep= "\t", header=TRUE)
@@ -214,6 +220,28 @@ function(input, output, session) {
   adj_cns <- left_join(adj_cns, loh, by = c("start", "end"))
   adj_cns$loh <- adj_cns$type %in% c("COPY-NEUTRAL LOH", "LOH", "WHOLE ARM COPY-NEUTRAL LOH", "WHOLE ARM LOH")
   
+  mutations <- read.csv("../../1218_rg_cnv_viz/CPDV193638_variants.csv")
+  mutations$AR.ADJUSTED <- round(mutations$AR.ADJUSTED, 2)
+  mutations <- filter(variants, ML.SOMATIC == TRUE & FLAGGED == FALSE & !(gene.symbol %in% c(NA, "<NA>", "Antitarget"))) %>% 
+    select(gene.symbol, ID, CN.SUBCLONAL, CELLFRACTION, AR.ADJUSTED, ML.LOH)
+  colnames(mutations) <- c("Gene", "ID", "Subclonal", "Cell Fraction", "Allelic Fraction", "LOH")
+  
+  varsome_links <- c()
+  for(i in 1:nrow(mutations)){
+    t <-  strsplit(mutations$ID[i], "chr|\\:|\\_|\\/")[[1]]
+    link <- paste0("https://varsome.com/variant/hg38/", t[2], "%3A", t[3], "%3A", t[4], "%3A", t[5])
+    varsome_links <- c(varsome_links, link)
+  }
+  mutations$ID <- paste0("<a href='", varsome_links, "' target='_blank'>", mutations$ID, "</a>" )
+  
+  genes_wmutations <- data.frame("gene" = unique(mutations$Gene), "mutation" = TRUE)
+  
+  adj_bygene <- left_join(adj_bygene, genes_wmutations, by = c("gene"))
+  adj_bygene$mutation <- ifelse(is.na(adj_bygene$mutation), FALSE, adj_bygene$mutation)
+  
+  metadata <- read.csv("../../1218_rg_cnv_viz/CPDV193638.csv")
+  output$meta <- renderTable(metadata %>% select(Purity, Ploidy, Sex, Contamination, Flagged, Failed))
+  output$comment <- renderText(ifelse(!is.na(metadata$Comment[1]), paste0("Comment: ", metadata$Comment[1]), ""))
   
   adj_by_gene <- adj_bygene %>% 
     #mutate(blue = as.numeric(mean_log2 < -0.41 | mean_log2 > 0.32)) %>%
@@ -223,9 +251,13 @@ function(input, output, session) {
   adj_gl <- filter(adj_cns, log2 < -0.41 | log2 > 0.32 | loh == TRUE)
   #adj_gl <- adj_cns
   
-  # observeEvent(input$Load, {
-  #   values$cnsData <- adj_cns
-  # })
+  adj_colors <- ifelse(adj_by_gene$C == 2, "white", blue)
+  adj_colors <- ifelse(adj_by_gene$loh == TRUE, black, adj_colors)
+  adj_colors <- ifelse(adj_by_gene$mutation == TRUE, pink, adj_colors)
+  adj_colors2 <- ifelse(adj_colors == "white", green, adj_colors)
+  adj_colors2 <- ifelse(adj_colors == pink & adj_by_gene$loh == TRUE, black, adj_colors2)
+  adj_by_gene$marker_color <- adj_colors
+  adj_by_gene$outline_color <- adj_colors2
   
   adj_chromosomes <- c(paste0("adj_chr", "1":"22"), "adj_chrX", "adj_chrY")
   for(i in c(1:length(adj_chromosomes))){
@@ -236,22 +268,19 @@ function(input, output, session) {
     adj_chr_gl <- filter(adj_gl, chromosome == gsub("adj_chr", "", adj_chromosomes[i]))
     assign(paste0(adj_chromosomes[i], "_gl"), adj_chr_gl)
     
-    #adj_colors <- ifelse(get(adj_chromosomes[i])$mean_log2 > 0.32 | get(adj_chromosomes[i])$mean_log2 < -0.41, "blue", "white")
-    #adj_colors2 <- ifelse(adj_colors == "white", "green", adj_colors)
-    adj_colors <- ifelse(get(adj_chromosomes[i])$C == 2, "white", "blue")
-    adj_colors <- ifelse(get(adj_chromosomes[i])$loh == TRUE, "black", adj_colors)
-    adj_colors2 <- ifelse(adj_colors == "white", "green", adj_colors)
-    
-    seg_colors <- ifelse(get(paste0(adj_chromosomes[i],"_gl"))$loh == TRUE, "black", "red")
+    seg_colors <- ifelse(get(paste0(adj_chromosomes[i],"_gl"))$loh == TRUE, black, orange)
     
     adj_plot <- plot_ly(source = "b", type = 'scatter', mode = 'markers') %>%
       add_trace(x = get(adj_chromosomes[i])$m, 
                 y = get(adj_chromosomes[i])$mean_log2, 
-                text = paste0(get(adj_chromosomes[i])$gene, " (", get(adj_chromosomes[i])$C, " copies)"),
+                text = paste0(get(adj_chromosomes[i])$gene, " (", round(get(adj_chromosomes[i])$C,2), " copies)"),
                 hoverinfo = 'text',
-                marker = list(color = adj_colors, 
-                              #line = list(color = "green"), 
-                              line = list(color = adj_colors2),
+                marker = list(color = #adj_colors,
+                                get(adj_chromosomes[i])$marker_color,
+                              #line = list(color = green), 
+                              line = list(color = 
+                                            #adj_colors2),
+                                            get(adj_chromosomes[i])$outline_color),
                               size = 2*log(get(adj_chromosomes[i])$total_weight+1)),
                 showlegend = F) %>%
       add_segments(x = 0, xend = max(c(get(adj_chromosomes[i])$m,0)), 
@@ -308,10 +337,18 @@ function(input, output, session) {
   #adj_copy <- reactive({ ifelse(adj_cn() == 1, "copy", "copies")})
   
   adjusted_cn <- eventReactive(input$adj_gene,{
-    paste0(filter(adj_by_gene, gene == input$adj_gene)$C, ifelse(filter(adj_by_gene, gene == input$adj_gene)$C == 1, " copy", " copies"))
+    paste0(round(filter(adj_by_gene, gene == input$adj_gene)$C,2), ifelse(filter(adj_by_gene, gene == input$adj_gene)$C == 1, " copy", " copies"))
   })
   
   output$adj_copies <- renderText(adjusted_cn())
+  
+  gene_mutations <- eventReactive(input$adj_gene,{
+    filter(mutations, Gene == input$adj_gene)
+  })
+  
+  output$mutations <- DT::renderDataTable(if(nrow(gene_mutations()) > 0){
+    return(datatable(gene_mutations(),escape=FALSE)) 
+  } else return(data.frame()))
   
   adj_seg <- reactive({ filter(adj_gl, start == adj_d() | end == adj_d()) })
   seg_start <- reactive({ adj_seg()$start[1] })
@@ -330,8 +367,6 @@ function(input, output, session) {
   
   adj_plot_check <- reactive({ adj_d() >= 1 })
   
-  adj_seg_gene_colors <- reactive({ ifelse(adj_seg_gene_dat()$loh == TRUE, "black", "red") })
-  
   output$adj_selected_plot <- renderPlotly({
     req(adj_plot_check())
     if(adj_test2() & input$adj_chr != "all"){
@@ -340,9 +375,12 @@ function(input, output, session) {
                   y = adj_seg_gene_dat()$mean_log2, 
                   hoverinfo = 'text',
                   text = adj_seg_gene_dat()$gene,
-                  marker = list(color=adj_seg_gene_colors(), 
+                  marker = list(color=#adj_seg_gene_colors(),
+                                  adj_seg_gene_dat()$marker_color,
                                 size = 3*log(adj_seg_gene_dat()$total_weight+1),
-                                line = list(color = adj_seg_gene_colors())),
+                                line = list(color = 
+                                              #adj_seg_gene_colors2())),
+                                              adj_seg_gene_dat()$outline_color)),
                   showlegend = F) %>%
         add_segments(x = min(adj_seg_gene_dat()$start), xend = max(adj_seg_gene_dat()$end), y = -0.41, yend = -0.41, line = list(color = "gray", width = 1, dash = "dot"), showlegend = F) %>%
         add_segments(x = min(adj_seg_gene_dat()$start), xend = max(adj_seg_gene_dat()$end), y = 0.32, yend = 0.32, line = list(color = "gray", width = 1, dash = "dot"), showlegend = F) %>%
@@ -353,5 +391,4 @@ function(input, output, session) {
 }
 
 # get rid of "." gene
-# fix zero problem for gene data
 # show copy number for unadjusted data on label
