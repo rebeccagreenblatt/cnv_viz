@@ -17,6 +17,7 @@ library(cBioPortalData)
 cbio <- cBioPortal()
 cbio_studies <- read.csv("../cbio_study_names.csv")
 library(DT)
+library(stringr)
 #source("../adjusted_panel.R")
 
 function(input, output, session) {
@@ -193,11 +194,12 @@ function(input, output, session) {
   output$cbioOutput <- DT::renderDataTable({
     req(nchar(input$cancer)>0)
     datatable(cbio_dat() %>% group_by(hugoGeneSymbol) %>% 
-                summarise(Gain = round(sum(value ==1)/n(),2), 
-                          Amplification = round(sum(value == 2)/n(),2), 
-                          ShallowDeletion = round(sum(value == -1)/n(),2), 
-                          DeepDeletion = round(sum(value == -2)/n(),2)),
-              rownames = FALSE)
+                summarise(Gain = sum(value ==1)/n(), 
+                          Amplification = sum(value == 2)/n(), 
+                          ShallowDeletion = sum(value == -1)/n(), 
+                          DeepDeletion = sum(value == -2)/n()),
+              rownames = FALSE) %>% 
+      formatPercentage(c("Gain", "Amplification", "ShallowDeletion", "DeepDeletion"), 2)
   })
 }
   
@@ -208,23 +210,30 @@ function(input, output, session) {
   colnames(adj_bygene)[colnames(adj_bygene) == "number.targets"] <- "total_weight"
   adj_bygene$mean_log2 <- round(log(adj_bygene$C/2, 2),2)
   adj_bygene$mean_log2 <- ifelse(adj_bygene$C == 0, -2, adj_bygene$mean_log2)
+  adj_bygene$mean_log2 <- ifelse(adj_bygene$mean_log2 > 5, 5, adj_bygene$mean_log2)
+  adj_bygene$C <- round(adj_bygene$C)
   
   adj_cns <- read.table("../../1218_rg_cnv_viz/CPDV193638_dnacopy.seg", sep= "\t", header=TRUE)
   colnames(adj_cns)[colnames(adj_cns) == "chrom"] <- "chromosome"
   colnames(adj_cns)[colnames(adj_cns) == "loc.start"] <- "start"
   colnames(adj_cns)[colnames(adj_cns) == "loc.end"] <- "end"
   adj_cns$log2 <- log(adj_cns$C/2, 2)
-  adj_cns$log2 <- ifelse(adj_cns$C == 0, -2, adj_cns$log2) #make sure this looks okay / makes sense
+  adj_cns$log2 <- ifelse(adj_cns$C == 0, -2, adj_cns$log2) 
+  adj_cns$C <- round(adj_cns$C)
   
   loh <- read.csv("../../1218_rg_cnv_viz/CPDV193638_loh.csv") %>% select(chr, start, end, type)
   adj_cns <- left_join(adj_cns, loh, by = c("start", "end"))
   adj_cns$loh <- adj_cns$type %in% c("COPY-NEUTRAL LOH", "LOH", "WHOLE ARM COPY-NEUTRAL LOH", "WHOLE ARM LOH")
   
-  mutations <- read.csv("../../1218_rg_cnv_viz/CPDV193638_variants.csv")
-  mutations$AR.ADJUSTED <- round(mutations$AR.ADJUSTED, 2)
+  variants <- read.csv("../../1218_rg_cnv_viz/CPDV193638_variants.csv")
+  variants$AR <- round(variants$AR, 2)
+  variants$ML.AR <- round(variants$ML.AR, 2)
+  variants$ML.AR <- ifelse(variants$ML.C == 0, "N/A", variants$ML.AR) #shouldn't have an allelic fraction if copy number is truly 0...
   mutations <- filter(variants, ML.SOMATIC == TRUE & FLAGGED == FALSE & !(gene.symbol %in% c(NA, "<NA>", "Antitarget"))) %>% 
-    select(gene.symbol, ID, CN.SUBCLONAL, CELLFRACTION, AR.ADJUSTED, ML.LOH)
-  colnames(mutations) <- c("Gene", "ID", "Subclonal", "Cell Fraction", "Allelic Fraction", "LOH")
+    #select(gene.symbol, ID, CN.SUBCLONAL, CELLFRACTION, AR.ADJUSTED, ML.LOH)
+    select(gene.symbol, ID, depth, AR, ML.AR)
+  #colnames(mutations) <- c("Gene", "ID", "Subclonal", "Cell Fraction", "Allelic Fraction", "LOH")
+  colnames(mutations) <- c("Gene", "ID", "Depth", "Raw Allelic Fraction", "Allelic Fraction Adjusted for Copy # Change") 
   
   varsome_links <- c()
   for(i in 1:nrow(mutations)){
@@ -240,6 +249,7 @@ function(input, output, session) {
   adj_bygene$mutation <- ifelse(is.na(adj_bygene$mutation), FALSE, adj_bygene$mutation)
   
   metadata <- read.csv("../../1218_rg_cnv_viz/CPDV193638.csv")
+  metadata$Sex = ifelse(metadata$Sex == TRUE, "MALE", "FEMALE")
   output$meta <- renderTable(metadata %>% select(Purity, Ploidy, Sex, Contamination, Flagged, Failed))
   output$comment <- renderText(ifelse(!is.na(metadata$Comment[1]), paste0("Comment: ", metadata$Comment[1]), ""))
   
@@ -347,7 +357,7 @@ function(input, output, session) {
   })
   
   output$mutations <- DT::renderDataTable(if(nrow(gene_mutations()) > 0){
-    return(datatable(gene_mutations(),escape=FALSE)) 
+    return(datatable(gene_mutations(),escape=FALSE,options = list(dom = 't', columnDefs = list(list(className = 'dt-center', targets = c(1:5)))))) 
   } else return(data.frame()))
   
   adj_seg <- reactive({ filter(adj_gl, start == adj_d() | end == adj_d()) })
