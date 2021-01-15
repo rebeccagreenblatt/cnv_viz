@@ -204,6 +204,7 @@ function(input, output, session) {
 }
   
   ## adjusted
+  # get rid of flagged genes?? 
   adj_bygene <- read.csv("../../1218_rg_cnv_viz/CPDV193638_genes.csv") %>% filter(!(gene.symbol %in% c("Antitarget", ".")))
   colnames(adj_bygene)[colnames(adj_bygene) == "gene.symbol"] <- "gene"
   colnames(adj_bygene)[colnames(adj_bygene) == "chr"] <- "chromosome"
@@ -257,6 +258,8 @@ function(input, output, session) {
     #mutate(blue = as.numeric(mean_log2 < -0.41 | mean_log2 > 0.32)) %>%
     mutate(m = (start+end)/2, cn = C)
   
+  max_xranges <- adj_by_gene %>% group_by(chromosome) %>% summarise(max = max(end))
+  
   #adj_cns <- adj_cns %>% mutate(log2 = log(C/2,2))
   adj_gl <- filter(adj_cns, log2 < -0.41 | log2 > 0.32 | loh == TRUE)
   #adj_gl <- adj_cns
@@ -274,6 +277,9 @@ function(input, output, session) {
     
     adj_chr <- filter(adj_by_gene, chromosome == gsub("adj_", "", adj_chromosomes[i]))
     assign(paste0(adj_chromosomes[i]), adj_chr)
+    
+    max_xrange <- max_xranges$max[i]
+    #can you replace below with just adj_chr isntead of get(... etc)??
     
     adj_chr_gl <- filter(adj_gl, chromosome == gsub("adj_chr", "", adj_chromosomes[i]))
     assign(paste0(adj_chromosomes[i], "_gl"), adj_chr_gl)
@@ -297,7 +303,7 @@ function(input, output, session) {
                    y = -0.41, yend = -0.41, line = list(color = "gray", width = 1, dash = "dot"), showlegend = F) %>%
       add_segments(x = 0, xend = max(c(get(adj_chromosomes[i])$m,0)), 
                    y = 0.32, yend = 0.32, line = list(color = "gray", width = 1, dash = "dot"), showlegend = F) %>%
-      layout(annotations = list(x = 40e6 , y = 6, text = gsub("adj_", "", adj_chromosomes[i]), showarrow= F), yaxis=list(title = "log(2) copy number ratio", titlefont = list(size = 8), range = c(-3, 6)), xaxis= list(range = c(0,250e6)))
+      layout(yaxis=list(title = "log(2) copy number ratio", titlefont = list(size = 8), range = c(-3, 6)))
     
     if(nrow(get(paste0(adj_chromosomes[i], "_gl")))>0){
       for(j in 1:nrow(get(paste0(adj_chromosomes[i], "_gl")))){
@@ -309,19 +315,44 @@ function(input, output, session) {
       }
     }
     
+    cytoband_data <- read.csv("../cytoband_data.csv")
+    cytoband_chrom <- filter(cytoband_data, chrom == gsub("adj_", "", adj_chromosomes[i]))
+    
+    subplot <- adj_plot %>% layout(
+      annotations = list(x = 40e6 , y = 6, text = gsub("adj_", "", adj_chromosomes[i]), showarrow= F), 
+      xaxis = list(range = c(0, 250e6), dtick = 100e6), yaxis = list(range(-3,6)))
+    
+    adj_plot <- adj_plot %>% 
+      # add_lines(x=c(0, max_xrange),
+      #                                y = c(-3, -3),
+      #           xaxis = "x2",
+      #                               showlegend = FALSE,
+      #                              line=list(color = "black"),
+      #                             hoverinfo = 'skip') %>%
+      layout(
+        #xaxis = list(showgrid = FALSE, range = c(0, max_xrange)),
+        xaxis = list(scaleanchor = "x", ticktext = as.list(cytoband_chrom$name), tickvals = as.list(cytoband_chrom$chromStart),
+                      tickfont = list(size = 8), tickmode = "array", tickangle = 270, side = "top"),
+      #domain = c(0, max(get(adj_chromosomes[i])$end))),
+      #yaxis=list(title = "log(2) copy number ratio", titlefont = list(size = 8), range = c(-3, 6)),
+      margin = list(t = 80))
+    
+    
     assign(paste0(adj_chromosomes[i],"_plot"), adj_plot)
+    assign(paste0(adj_chromosomes[i], "_subplot"), subplot)
     
   }
   
-  adj_all_plot <- subplot(adj_chr1_plot, adj_chr2_plot, adj_chr3_plot,
-                          adj_chr4_plot, adj_chr5_plot, adj_chr6_plot,
-                          adj_chr7_plot, adj_chr8_plot, adj_chr9_plot,
-                          adj_chr10_plot, adj_chr11_plot, adj_chr12_plot,
-                          adj_chr13_plot, adj_chr14_plot, adj_chr15_plot,
-                          adj_chr16_plot, adj_chr17_plot, adj_chr18_plot,
-                          adj_chr19_plot, adj_chr20_plot, adj_chr21_plot,
-                          adj_chr22_plot, adj_chrX_plot, adj_chrY_plot,
-                          nrows=9, shareY = TRUE, shareX = TRUE) %>%
+  adj_all_plot <- subplot(adj_chr1_subplot, adj_chr2_subplot, adj_chr3_subplot,
+                          adj_chr4_subplot, adj_chr5_subplot, adj_chr6_subplot,
+                          adj_chr7_subplot, adj_chr8_subplot, adj_chr9_subplot,
+                          adj_chr10_subplot, adj_chr11_subplot, adj_chr12_subplot,
+                          adj_chr13_subplot, adj_chr14_subplot, adj_chr15_subplot,
+                          adj_chr16_subplot, adj_chr17_subplot, adj_chr18_subplot,
+                          adj_chr19_subplot, adj_chr20_subplot, adj_chr21_subplot,
+                          adj_chr22_subplot, adj_chrX_subplot, adj_chrY_subplot,
+                          nrows=9, shareY = TRUE, 
+                          shareX = TRUE) %>%
     layout(autosize = F, height = 1200)
   
   adj_plot_todisplay <- reactive({ get(paste0("adj_", input$adj_chr, "_plot")) })
