@@ -253,7 +253,7 @@ function(input, output, session) {
   adj_by_gene$marker_color <- adj_colors
   adj_by_gene$outline_color <- adj_colors2
   
-  cytoband_data <- read.csv("../cytoband_data.csv")
+  cytoband_data <- read.csv("cytoband_data.csv")
   
   adj_chromosomes <- c(paste0("adj_chr", "1":"22"), "adj_chrX", "adj_chrY")
   for(i in c(1:length(adj_chromosomes))){
