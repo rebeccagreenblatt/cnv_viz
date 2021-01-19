@@ -24,6 +24,33 @@ fluidPage(
   #tags$style(type='text/css', ".selectize-input { font-size: 12px; line-height: 12px; padding-top: 10px} .selectize-dropdown { font-size: 12px; line-height: 12px;}"),
   
   navbarPage("CNViz",
+             tabPanel("Patient Data (adjusted)", fluid=TRUE,
+                      sidebarLayout(
+                        sidebarPanel(
+                          width = 3,
+                          selectInput(inputId = "adj_chr",
+                                      label = "chromosome",
+                                      choices = choices,
+                                      selected = "all"),
+                          selectizeInput(inputId = "adj_gene",
+                                         label = "gene",
+                                         choices = genes,
+                                         selected = ""),
+                          br(), 
+                          img(src = "../adjusted_legend.jpg", width = "100%")
+                        ),
+                        mainPanel(
+                          h3(sample_name),
+                          tableOutput("meta"),
+                          textOutput("comment"),
+                          br(),
+                          plotlyOutput("adj_chr_plot", width = "100%"),
+                          textOutput("adj_copies"),
+                          dataTableOutput("mutations"),
+                          br(),
+                          conditionalPanel("input.adj_chr != 'all'", plotlyOutput("adj_selected_plot"))
+                        )
+                      )),
              tabPanel("Patient Data (unadjusted)", fluid=TRUE, 
                       sidebarLayout(
                         sidebarPanel(
@@ -40,7 +67,7 @@ fluidPage(
                           br(), br(), 
                           #a("Launch GISTIC", target = "_blank", href = 'http://portals.broadinstitute.org/tcga/gistic/browseGisticByGene#'),
                           #br(), br(), 
-                          img(src = "unadjusted_legend.jpg", width = "100%"),
+                          img(src = "../unadjusted_legend.jpg", width = "100%"),
                           br(), br()
                         ),
                         mainPanel(
@@ -49,33 +76,6 @@ fluidPage(
                           plotlyOutput("chr_plot", width = "100%"),
                           br(),
                           conditionalPanel("input.chr != 'all'", plotlyOutput("selected_plot"))
-                        )
-                      )),
-             tabPanel("Patient Data (adjusted)", fluid=TRUE,
-                      sidebarLayout(
-                        sidebarPanel(
-                          width = 3,
-                          selectInput(inputId = "adj_chr",
-                                      label = "chromosome",
-                                      choices = choices,
-                                      selected = "all"),
-                          selectizeInput(inputId = "adj_gene",
-                                         label = "gene",
-                                         choices = genes,
-                                         selected = ""),
-                          br(), 
-                          img(src = "adjusted_legend.jpg", width = "100%")
-                        ),
-                        mainPanel(
-                          h3(sample_name),
-                          tableOutput("meta"),
-                          textOutput("comment"),
-                          br(),
-                          plotlyOutput("adj_chr_plot", width = "100%"),
-                          textOutput("adj_copies"),
-                          dataTableOutput("mutations"),
-                          br(),
-                          conditionalPanel("input.adj_chr != 'all'", plotlyOutput("adj_selected_plot"))
                         )
                       )),
              tabPanel("TCGA Pan-Cancer Atlas 2018 Data", fluid=TRUE,
