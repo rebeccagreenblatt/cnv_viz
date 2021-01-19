@@ -3,28 +3,17 @@ library(dplyr)
 options(dplyr.summarise.inform = FALSE)
 library(plotly)
 
-
-
-#path <-"../../cnv_viz_demo/rg_viz"
-#test_files <- list.files(path)
-
-#karyotype_filename <- test_files[157]
-#karyotype_path <- paste0(path, "/", karyotype_filename)
-#file.copy(karyotype_path, "www")
-#sample_name <- gsub(".final-diagram.pdf", "", karyotype_filename)
-
 path <- "../../1218_rg_cnv_viz/"
 karyotype_filename <- "CPDV193638.cnv.pdf"
 karyotype_path <- paste0(path, karyotype_filename)
 file.copy(karyotype_path, "www")
-sample_name <- gsub(".cnv.pdf", "", karyotype_filename)
 
-#cnr_filename <- paste0(path, "/", test_files[158])
-cnr_filename <- "CPDV193638.final.cnr"
-cnr_path <- paste0(path, cnr_filename)
-cnr <- read.table(file = cnr_path, sep = '\t', header = TRUE)
-cnr_target <- filter(cnr, !gene %in% c("Antitarget", ".")) %>% select(chromosome, gene)
+cnr_name <- "../../1218_rg_cnv_viz/CPDV193638.final.cnr"
+cnr_file <- read.table(cnr_name, sep = '\t', header = TRUE)
+cnr_target <- filter(cnr_file, !gene %in% c("Antitarget", ".")) %>% select(chromosome, gene)
 genes <- c("", sort(unique(cnr_target$gene)))
+
+sample_name <- tail(strsplit(cnr_name, "\\.|\\/")[[1]], 3)[1]
 
 cbio_studies <- read.csv("../cbio_study_names.csv")
 
