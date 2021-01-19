@@ -21,7 +21,7 @@ choices <- c("all", paste0("chr", "1":"22"), "chrX", "chrY")
 
 fluidPage(
   
-  tags$style(type='text/css', ".selectize-input { font-size: 12px; line-height: 12px; padding-top: 10px} .selectize-dropdown { font-size: 12px; line-height: 12px;}"),
+  #tags$style(type='text/css', ".selectize-input { font-size: 12px; line-height: 12px; padding-top: 10px} .selectize-dropdown { font-size: 12px; line-height: 12px;}"),
   
   navbarPage("CNViz",
              tabPanel("Patient Data (unadjusted)", fluid=TRUE, 
