@@ -8,7 +8,7 @@ karyotype_filename <- "CPDV193638.cnv.pdf"
 karyotype_path <- paste0(path, karyotype_filename)
 file.copy(karyotype_path, "www")
 
-cnr_name <- "../../1218_rg_cnv_viz/CPDV193638.final.cnr"
+cnr_name <- "../../CPDC181710/CPDC181710.final.cnr"
 cnr_file <- read.table(cnr_name, sep = '\t', header = TRUE)
 cnr_target <- filter(cnr_file, !gene %in% c("Antitarget", ".")) %>% select(chromosome, gene)
 genes <- c("", sort(unique(cnr_target$gene)))
