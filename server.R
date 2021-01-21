@@ -38,6 +38,7 @@ function(input, output, session) {
            copies = ifelse(cn == 1, " copy", " copies")) 
   
   by_gene$mean_log2 <- ifelse(by_gene$mean_log2 < -2.5, -2.5, by_gene$mean_log2) #keep all points in range of y axis
+  by_gene$mean_log2 <- ifelse(by_gene$mean_log2 > 5, 5, by_gene$mean_log2)
   
   cns <- filter(cns_file, gene != "-")
   gl <- filter(cns, log2 < -0.41 | log2 > 0.32) #segments with copy # < 1.5 or > 2.5
