@@ -1,23 +1,29 @@
 library(shiny)
 library(dplyr)
-options(dplyr.summarise.inform = FALSE)
 library(plotly)
+library(cBioPortalData)
+library(DT)
+library(stringr)
+options(dplyr.summarise.inform = FALSE)
 
-path <- "../../1218_rg_cnv_viz/"
-karyotype_filename <- "CPDV193638.cnv.pdf"
-karyotype_path <- paste0(path, karyotype_filename)
-file.copy(karyotype_path, "www")
+sample <- "CPDC160895"
+sample_path <- "../../CPDC160895/"
 
-cnr_name <- "../../CPDC181710/CPDC181710.final.cnr"
-cnr_file <- read.table(cnr_name, sep = '\t', header = TRUE)
+karyotype_filename <- paste0(sample, ".cnv.pdf")
+karyotype_file <- paste0(sample_path, karyotype_filename)
+file.copy(karyotype_file, "www")
+
+cnr_file <- read.table(paste0(sample_path, sample, ".final.cnr"), sep = '\t', header = TRUE)
 cnr_target <- filter(cnr_file, !gene %in% c("Antitarget", ".")) %>% select(chromosome, gene)
 genes <- c("", sort(unique(cnr_target$gene)))
 
-sample_name <- tail(strsplit(cnr_name, "\\.|\\/")[[1]], 3)[1]
+adjusted_gene_file <- read.csv(paste0(sample_path, sample, "_genes.csv"))
+adj_genes <- c("", sort(unique(adjusted_gene_file$gene.symbol)))
 
-cbio_studies <- read.csv("../cbio_study_names.csv")
+cbio <- cBioPortal()
+cbio_studies <- read.csv("cbio_study_names.csv")
 
-choices <- c("all", paste0("chr", "1":"22"), "chrX", "chrY")
+chrs <- c("all", paste0("chr", "1":"22"), "chrX", "chrY")
 
 fluidPage(
   
@@ -30,17 +36,17 @@ fluidPage(
                           width = 3,
                           selectInput(inputId = "adj_chr",
                                       label = "chromosome",
-                                      choices = choices,
+                                      choices = chrs,
                                       selected = "all"),
                           selectizeInput(inputId = "adj_gene",
                                          label = "gene",
-                                         choices = genes,
+                                         choices = adj_genes,
                                          selected = ""),
                           br(), 
                           img(src = "../adjusted_legend.jpg", width = "100%")
                         ),
                         mainPanel(
-                          h3(sample_name),
+                          h3(sample),
                           tableOutput("meta"),
                           textOutput("comment"),
                           br(),
@@ -57,7 +63,7 @@ fluidPage(
                           width = 3,
                           selectInput(inputId = "chr",
                                       label = "chromosome",
-                                      choices = choices,
+                                      choices = chrs,
                                       selected = "all"),
                           selectizeInput(inputId = "gene",
                                          label = "gene",
@@ -65,14 +71,12 @@ fluidPage(
                                          selected = ""),
                           a("Karyotype",target="_blank",href=karyotype_filename),
                           br(), br(), 
-                          #a("Launch GISTIC", target = "_blank", href = 'http://portals.broadinstitute.org/tcga/gistic/browseGisticByGene#'),
-                          #br(), br(), 
                           img(src = "../unadjusted_legend.jpg", width = "100%"),
                           br(), br()
                         ),
                         mainPanel(
                           width = 9,
-                          h3(sample_name),
+                          h3(sample),
                           plotlyOutput("chr_plot", width = "100%"),
                           br(),
                           conditionalPanel("input.chr != 'all'", plotlyOutput("selected_plot"))
