@@ -1,11 +1,10 @@
-sample <- "CPDC160895"
-sample_path <- paste0("../../CPDC160895/")
+sample <- "CPDC181710"
+sample_path <- paste0("../../CPDC181710/")
 
 cnr_file <- read.table(paste0(sample_path, sample, ".final.cnr"), sep = '\t', header = TRUE)
 cns_file <- read.table(paste0(sample_path, sample, ".final.cns"), sep='\t', header = TRUE)
 adjusted_gene_file <- read.csv(paste0(sample_path, sample, "_genes.csv"))
-adjusted_segment_file <- read.table(paste0(sample_path, sample, "_dnacopy.seg"), sep= "\t", header=TRUE)
-loh_file <- read.csv(paste0(sample_path, sample, "_loh.csv"))
+loh_file <- read.csv(paste0(sample_path, sample, "_loh.csv")) #not using dna seg file, only using loh seg file for adjusted segments
 variants_file <- read.csv(paste0(sample_path, sample, "_variants.csv"))
 metadata_file <- read.csv(paste0(sample_path, sample, ".csv"))
 
@@ -14,6 +13,9 @@ blue <- "#0072B2" # out of range genes
 pink <- "#CC79A7" #mutation
 orange <- "#D55E00" #segment
 black <- "#000000" #LOH
+
+cbio <- cBioPortal()
+cbio_studies <- read.csv("cbio_study_names.csv")
 
 function(input, output, session) {
   
@@ -193,16 +195,10 @@ function(input, output, session) {
   adj_bygene$C <- round(adj_bygene$C)
   adj_bygene$copies <- ifelse(adj_bygene$C == 1, " copy", " copies")
   
-  adj_cns <- adjusted_segment_file
-  colnames(adj_cns)[colnames(adj_cns) == "chrom"] <- "chromosome"
-  colnames(adj_cns)[colnames(adj_cns) == "loc.start"] <- "start"
-  colnames(adj_cns)[colnames(adj_cns) == "loc.end"] <- "end"
+  adj_cns <- loh_file %>% select(chr, start, end, type, C)
+  colnames(adj_cns)[colnames(adj_cns) == "chr"] <- "chromosome"
   adj_cns$log2 <- log(adj_cns$C/2, 2)
-  adj_cns$log2 <- ifelse(adj_cns$C < 0.4, -2.5, adj_cns$log2) 
-  adj_cns$C <- round(adj_cns$C)
-  
-  loh <- loh_file %>% select(chr, start, end, type)
-  adj_cns <- left_join(adj_cns, loh, by = c("start", "end"))
+  adj_cns$log2 <- ifelse(adj_cns$C < 0.4, -2.5, adj_cns$log2)
   adj_cns$loh <- adj_cns$type %in% c("COPY-NEUTRAL LOH", "LOH", "WHOLE ARM COPY-NEUTRAL LOH", "WHOLE ARM LOH")
   
   variants <- variants_file
@@ -254,7 +250,7 @@ function(input, output, session) {
     adj_chr <- filter(adj_by_gene, chromosome == gsub("adj_", "", adj_chromosomes[i]))
     assign(paste0(adj_chromosomes[i]), adj_chr)
     
-    adj_chr_gl <- filter(adj_gl, chromosome == gsub("adj_chr", "", adj_chromosomes[i]))
+    adj_chr_gl <- filter(adj_gl, chromosome == gsub("adj_", "", adj_chromosomes[i]))
     assign(paste0(adj_chromosomes[i], "_gl"), adj_chr_gl)
     
     seg_colors <- ifelse(get(paste0(adj_chromosomes[i],"_gl"))$loh == TRUE, black, orange)
@@ -355,7 +351,7 @@ function(input, output, session) {
     return(datatable(gene_mutations(),escape=FALSE,options = list(dom = 't', columnDefs = list(list(className = 'dt-center', targets = c(1:5)))))) 
   } else return(data.frame()))
   
-  adj_seg <- reactive({ filter(adj_gl, chromosome_names[chromosome] == gsub("adj_", "", input$adj_chr), start == adj_d() | end == adj_d()) })
+  adj_seg <- reactive({ filter(adj_gl, chromosome == gsub("adj_", "", input$adj_chr), start == adj_d() | end == adj_d()) })
   seg_start <- reactive({ adj_seg()$start[1] })
   seg_end <- reactive({ adj_seg()$end[1] })
   adj_seg_gene_dat <- reactive({ 
