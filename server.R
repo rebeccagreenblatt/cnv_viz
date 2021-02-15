@@ -1,5 +1,9 @@
-sample <- "CPDC181710"
-sample_path <- paste0("../../CPDC181710/")
+# sample <- "CPDC160895"
+# sample_path <- paste0("../../CPDC160895/")
+#sample <- "CPDC181710"
+#sample_path <- paste0("../../CPDC181710/")
+sample <- "CPDV193638"
+sample_path <- paste0("../../CPDV193638/")
 
 cnr_file <- read.table(paste0(sample_path, sample, ".final.cnr"), sep = '\t', header = TRUE)
 cns_file <- read.table(paste0(sample_path, sample, ".final.cns"), sep='\t', header = TRUE)
@@ -20,9 +24,9 @@ cbio_studies <- read.csv("cbio_study_names.csv")
 function(input, output, session) {
   
   ## unadjusted data
-  output$karyotype <- renderText({
-    return(paste('<iframe style="height:600px; width:100%" src="', karyotype_filename, '"></iframe>', sep = ""))
-  })
+  # output$karyotype <- renderText({
+  #   return(paste('<iframe style="height:600px; width:100%" src="', karyotype_filename, '"></iframe>', sep = ""))
+  # })
   
   cnr <- cnr_file
   cnr_target <- filter(cnr, !gene %in% c("Antitarget", ".")) %>% 
@@ -199,7 +203,7 @@ function(input, output, session) {
   colnames(adj_cns)[colnames(adj_cns) == "chr"] <- "chromosome"
   adj_cns$log2 <- log(adj_cns$C/2, 2)
   adj_cns$log2 <- ifelse(adj_cns$C < 0.4, -2.5, adj_cns$log2)
-  adj_cns$loh <- adj_cns$type %in% c("COPY-NEUTRAL LOH", "LOH", "WHOLE ARM COPY-NEUTRAL LOH", "WHOLE ARM LOH")
+  adj_cns$loh <- adj_cns$type %in% c("COPY-NEUTRAL LOH", "LOH", "WHOLE ARM COPY-NEUTRAL LOH", "WHOLE ARM LOH") | adj_cns$C < 1.5
   
   variants <- variants_file
   variants$AR <- round(variants$AR, 2)
@@ -207,7 +211,7 @@ function(input, output, session) {
   variants$ML.AR <- ifelse(variants$ML.C == 0, "N/A", variants$ML.AR) #shouldn't have an allelic fraction if copy number is truly 0
   mutations <- filter(variants, ML.SOMATIC == TRUE & FLAGGED == FALSE & !(gene.symbol %in% c(NA, "<NA>", "Antitarget"))) %>% 
     select(gene.symbol, ID, depth, AR, ML.AR)
-  colnames(mutations) <- c("Gene", "ID", "Depth", "Raw Allelic Fraction", "Expected Allelic Fraction (using purity, ploidy and copy # estimates)") 
+  colnames(mutations) <- c("Gene", "ID", "Depth", "Raw Allelic Fraction", "Adjusted Allelic Fraction (adjusted for purity, ploidy and copy # estimates)") 
   
   varsome_links <- c()
   for(i in 1:nrow(mutations)){
@@ -225,7 +229,7 @@ function(input, output, session) {
   metadata <- metadata_file
   metadata$Sex = ifelse(metadata$Sex == TRUE, "MALE", "FEMALE")
   metadata$Ploidy = round(metadata$Ploidy)
-  output$meta <- renderTable(metadata %>% select(Purity, Ploidy, Sex, Contamination, Flagged, Failed))
+  output$meta <- renderTable(metadata %>% select(Purity, Ploidy, Sex, Contamination, Flagged, Failed), bordered = TRUE)
   output$comment <- renderText(ifelse(!is.na(metadata$Comment[1]), paste0("Comment: ", metadata$Comment[1]), ""))
   ploidy <- metadata$Ploidy
   
@@ -255,10 +259,12 @@ function(input, output, session) {
     
     seg_colors <- ifelse(get(paste0(adj_chromosomes[i],"_gl"))$loh == TRUE, black, orange)
     
+    out_of_range <- ifelse(get(adj_chromosomes[i])$C > 64, " - log-2 value outside range of y axis", "")
+    
     adj_plot <- plot_ly(source = "b", type = 'scatter', mode = 'markers') %>%
       add_trace(x = get(adj_chromosomes[i])$m, 
                 y = get(adj_chromosomes[i])$mean_log2, 
-                text = paste0(get(adj_chromosomes[i])$gene, " (", round(get(adj_chromosomes[i])$C,2), " copies)"), 
+                text = paste0(get(adj_chromosomes[i])$gene, " (", round(get(adj_chromosomes[i])$C,2), " copies)", out_of_range), 
                 hoverinfo = 'text',
                 marker = list(color = #adj_colors,
                                 get(adj_chromosomes[i])$marker_color,
@@ -290,12 +296,15 @@ function(input, output, session) {
     subplot <- adj_plot %>% layout(
       annotations = list(x = 40e6 , y = 6, text = gsub("adj_", "", adj_chromosomes[i]), showarrow= F), 
       xaxis = list(range = c(0, 250e6), dtick = 100e6), yaxis = list(range(-3,6))) #%>%
+    
     adj_plot <- adj_plot %>% 
+      add_trace(x = cytoband_chrom$chromStart, y = 6, xaxis = 'x2', showlegend = F, marker = list(size = 0.1), hoverinfo = 'skip') %>%
       layout(title = gsub("adj_", "", adj_chromosomes[i]),
-        xaxis = list(range = c(0, 
-                               max(cytoband_chrom$chromEnd)),
-          ticktext = as.list(cytoband_chrom$name), tickvals = as.list(cytoband_chrom$chromStart),
-                      tickfont = list(size = 8), tickmode = "array", tickangle = 270, side = "top"), 
+        xaxis = list(range = c(0, max(cytoband_chrom$chromEnd)), zeroline = TRUE, showline = TRUE),
+        xaxis2 = list(range = c(0, max(cytoband_chrom$chromEnd)),
+                      ticktext = as.list(cytoband_chrom$name), tickvals = as.list(cytoband_chrom$chromStart),
+                      tickfont = list(size = 8), tickmode = "array", tickangle = 270, side = "top",
+                      overlaying = 'x', zeroline = TRUE, autorange = FALSE, matches = 'x'),
           margin = list(t = 80)) 
     
     assign(paste0(adj_chromosomes[i],"_plot"), adj_plot)
@@ -338,7 +347,9 @@ function(input, output, session) {
   })
   
   adjusted_cn <- eventReactive(input$adj_gene,{
-    paste0(round(filter(adj_by_gene, gene == input$adj_gene)$C,2), ifelse(filter(adj_by_gene, gene == input$adj_gene)$C == 1, " copy", " copies"))
+    if(nchar(input$adj_gene) > 1){
+      paste0(input$adj_gene, " (", round(filter(adj_by_gene, gene == input$adj_gene)$start/1e6,2), "M", "-", round(filter(adj_by_gene, gene == input$adj_gene)$end/1e6,2), "M", ")", ": ", round(filter(adj_by_gene, gene == input$adj_gene)$C,2), ifelse(filter(adj_by_gene, gene == input$adj_gene)$C == 1, " copy", " copies"))
+    } else paste0("")
   })
   
   output$adj_copies <- renderText(adjusted_cn())
@@ -348,7 +359,7 @@ function(input, output, session) {
   })
   
   output$mutations <- DT::renderDataTable(if(nrow(gene_mutations()) > 0){
-    return(datatable(gene_mutations(),escape=FALSE,options = list(dom = 't', columnDefs = list(list(className = 'dt-center', targets = c(1:5)))))) 
+    return(datatable(gene_mutations(),escape=FALSE, options = list(dom = 't', columnDefs = list(list(className = 'dt-center', targets = c(1:5)))))) 
   } else return(data.frame()))
   
   adj_seg <- reactive({ filter(adj_gl, chromosome == gsub("adj_", "", input$adj_chr), start == adj_d() | end == adj_d()) })
