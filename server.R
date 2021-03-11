@@ -1,9 +1,15 @@
+library(karyoploteR)
+library(CopyNumberPlots)
+library(GenomicRanges)
+
 # sample <- "CPDC160895"
 # sample_path <- paste0("../../CPDC160895/")
 #sample <- "CPDC181710"
 #sample_path <- paste0("../../CPDC181710/")
 sample <- "CPDV193638"
 sample_path <- paste0("../../CPDV193638/")
+
+source("plot_function.R")
 
 cnr_file <- read.table(paste0(sample_path, sample, ".final.cnr"), sep = '\t', header = TRUE)
 cns_file <- read.table(paste0(sample_path, sample, ".final.cns"), sep='\t', header = TRUE)
@@ -17,16 +23,15 @@ blue <- "#0072B2" # out of range genes
 pink <- "#CC79A7" #mutation
 orange <- "#D55E00" #segment
 black <- "#000000" #LOH
+white <- "#FFFFFF"
 
 cbio <- cBioPortal()
 cbio_studies <- read.csv("cbio_study_names.csv")
 
+heme <- read.csv("hematologic_malignancies_panel.csv")
+solid <- read.csv("solid_tumor_panel.csv")
+
 function(input, output, session) {
-  
-  ## unadjusted data
-  # output$karyotype <- renderText({
-  #   return(paste('<iframe style="height:600px; width:100%" src="', karyotype_filename, '"></iframe>', sep = ""))
-  # })
   
   cnr <- cnr_file
   cnr_target <- filter(cnr, !gene %in% c("Antitarget", ".")) %>% 
@@ -50,62 +55,23 @@ function(input, output, session) {
   gl <- filter(cns, log2 < -0.41 | log2 > 0.32) #segments with copy # < 1.5 or > 2.5
   gl$log2 <- ifelse(gl$log2 < -2.5, -2.5, gl$log2) #keep all points in range of y axis
   
-  chromosomes <- c(paste0("chr", "1":"22"), "chrX", "chrY")
-  for(i in c(1:length(chromosomes))){
-    
-    chr <- filter(by_gene, chromosome == chromosomes[i])
-    assign(chromosomes[i], chr)
-    
-    chr_gl <- filter(gl, chromosome == chromosomes[i])
-    assign(paste0(chromosomes[i], "_gl"), chr_gl)
-    
-    colors <- ifelse(get(chromosomes[i])$mean_log2 > 0.32 | get(chromosomes[i])$mean_log2 < -0.41, blue, 
-                     "white")
-    colors2 <- ifelse(colors == "white", green, colors) 
-    
-    plot <- plot_ly(source = "a", type = 'scatter', mode = 'markers') %>%
-      add_trace(x = get(chromosomes[i])$m, 
-                y = get(chromosomes[i])$mean_log2, 
-                text = paste0(get(chromosomes[i])$gene, " (", get(chromosomes[i])$cn, get(chromosomes[i])$copies, ")"),
-                hoverinfo = 'text',
-                marker = list(color = colors, 
-                              line = list(color = green), 
-                              size = 3*log(get(chromosomes[i])$total_weight+1)),
-                showlegend = F) %>%
-      add_segments(x = 0, xend = max(get(chromosomes[i])$m), y = -0.41, yend = -0.41, line = list(color = "gray", width = 1, dash = "dot"), showlegend = F) %>%
-      add_segments(x = 0, xend = max(get(chromosomes[i])$m), y = 0.32, yend = 0.32, line = list(color = "gray", width = 1, dash = "dot"), showlegend = F) %>%
-      layout(annotations = list(x = 40e6 , y = 6, text = chromosomes[i], showarrow= F), yaxis=list(title = "log(2) copy number ratio", titlefont = list(size = 8), range = c(-3, 6)), xaxis= list(range = c(0,250e6)))
-    
-    if(nrow(get(paste0(chromosomes[i], "_gl")))>0){
-      for(j in 1:nrow(get(paste0(chromosomes[i], "_gl")))){
-        plot <- plot %>% add_segments(x = get(paste0(chromosomes[i], "_gl"))$start[j], 
-                                      xend = get(paste0(chromosomes[i], "_gl"))$end[j], 
-                                      y = get(paste0(chromosomes[i], "_gl"))$log2[j], 
-                                      yend = get(paste0(chromosomes[i], "_gl"))$log2[j],
-                                      text = paste0("segment (", get(paste0(chromosomes[i], "_gl"))$start[j], "-", get(paste0(chromosomes[i], "_gl"))$end[j], ")"),
-                                      hoverinfo = 'text',
-                                      line = list(color = orange, width = 3), showlegend = F)
-      }
-    }
-    
-    assign(paste0(chromosomes[i],"_plot"), plot)
-    
-  }
+  by_gene$marker_color <- ifelse(by_gene$cn == 2, white, blue)
+  by_gene$outline_color <- ifelse(by_gene$marker_color == white, green, blue)
   
-  all_plot <- subplot(chr1_plot, chr2_plot, chr3_plot,
-                      chr4_plot, chr5_plot, chr6_plot,
-                      chr7_plot, chr8_plot, chr9_plot,
-                      chr10_plot, chr11_plot, chr12_plot,
-                      chr13_plot, chr14_plot, chr15_plot,
-                      chr16_plot, chr17_plot, chr18_plot,
-                      chr19_plot, chr20_plot, chr21_plot,
-                      chr22_plot, chrX_plot, chrY_plot,
-                      nrows=9, shareY = TRUE, shareX = TRUE) %>%
-    layout(autosize = F, height = 1200)
+  gene_list <- reactive({ switch(input$gene_panel,
+                                 "all genes" = by_gene$gene,
+                                 "CPD Hematologic Malignancies Panel" = heme$gene,
+                                 "CPD Solid Tumor Panel" = solid$gene) 
+  })
   
-  plot_todisplay <- reactive({ get(paste0(input$chr, "_plot")) })
+  output$chr_plot <- renderPlotly({ getPlots(by_gene, gl, cytoband_data, ploidy = 2, gene_list(), input$chr, adjusted = FALSE) })
   
-  output$chr_plot <- renderPlotly(plot_todisplay())
+  observe({
+    updateSelectInput(session, "gene", choices = switch(input$gene_panel,
+                                                            "all genes" = c("", sort(by_gene$gene)),
+                                                            "CPD Hematologic Malignancies Panel" = c("", sort(heme$gene)),
+                                                            "CPD Solid Tumor Panel" = c("", sort(solid$gene)))
+    )})
   
   observe({
     updateSelectInput(session, "chr", selected = as.character(by_gene[by_gene$gene==input$gene,]$chromosome[1]))
@@ -150,7 +116,7 @@ function(input, output, session) {
                   showlegend = F) %>%
         add_segments(x = min(gene_data()$start), xend = max(gene_data()$end), y = -0.41, yend = -0.41, line = list(color = "gray", width = 1, dash = "dot"), showlegend = F) %>%
         add_segments(x = min(gene_data()$start), xend = max(gene_data()$end), y = 0.32, yend = 0.32, line = list(color = "gray", width = 1, dash = "dot"), showlegend = F) %>%
-        layout(title = paste0("probe data: ", gene_data()$gene[1], " (", cn(), " ", copy(),")"), xaxis = list(tickfont = list(size = 6), range = min(gene_data()$s), max(gene_data()$e)), yaxis=list(tickfont = list(size = 6), title = "log(2) copy number ratio", titlefont = list(size = 8), range = c(-3, 6)))
+        layout(title = paste0("probe data: ", gene_data()$gene[1], " (", cn(), " ", copy(),")"), xaxis = list(tickfont = list(size = 6), range = min(gene_data()$s), max(gene_data()$e)), yaxis=list(tickfont = list(size = 6), title = "log(2) copy number ratio", titlefont = list(size = 8), range = c(-3, 6)), paper_bgcolor='#fafafa', plot_bgcolor='#fafafa',margin = list(t = 80))
     } else if(test2() > 0 & input$chr != "all"){
       plot_ly(height = 250, type = 'scatter', mode = 'markers') %>%
         add_trace(x = seg_gene_dat()$m_probe, 
@@ -161,7 +127,7 @@ function(input, output, session) {
                   showlegend = F) %>%
         add_segments(x = min(seg_gene_dat()$start), xend = max(seg_gene_dat()$end), y = -0.41, yend = -0.41, line = list(color = "gray", width = 1, dash = "dot"), showlegend = F) %>%
         add_segments(x = min(seg_gene_dat()$start), xend = max(seg_gene_dat()$end), y = 0.32, yend = 0.32, line = list(color = "gray", width = 1, dash = "dot"), showlegend = F) %>%
-        layout(title = paste0("probe data: segment (", min(seg_gene_dat()$start) ,"-", max(seg_gene_dat()$end),")"), xaxis = list(tickfont = list(size = 6), range = min(seg_gene_dat()$s), max(seg_gene_dat()$e)), yaxis=list(tickfont = list(size = 6), title = "Copy number ratio", titlefont = list(size = 8), range = c(-3, 6)))
+        layout(title = paste0("probe data: segment (", min(seg_gene_dat()$start) ,"-", max(seg_gene_dat()$end),")"), xaxis = list(tickfont = list(size = 6), range = min(seg_gene_dat()$s), max(seg_gene_dat()$e)), yaxis=list(tickfont = list(size = 6), title = "Copy number ratio", titlefont = list(size = 8), range = c(-3, 6)), paper_bgcolor='#fafafa', plot_bgcolor='#fafafa',margin = list(t = 80))
     } 
   })
   
@@ -196,14 +162,18 @@ function(input, output, session) {
   adj_bygene$mean_log2 <- round(log(adj_bygene$C/2, 2),2)
   adj_bygene$mean_log2 <- ifelse(adj_bygene$C < 0.4, -2.5, adj_bygene$mean_log2) #ensure all points are within range of y axis
   adj_bygene$mean_log2 <- ifelse(adj_bygene$mean_log2 > 5, 5, adj_bygene$mean_log2) #ensure all points are within range of y axis
-  adj_bygene$C <- round(adj_bygene$C)
-  adj_bygene$copies <- ifelse(adj_bygene$C == 1, " copy", " copies")
+  adj_bygene$cn <- round(adj_bygene$C)
+  adj_bygene$copies <- ifelse(adj_bygene$cn == 1, " copy", " copies")
+  adj_bygene$loh <- ifelse(is.na(adj_bygene$loh), FALSE, adj_bygene$loh)
   
-  adj_cns <- loh_file %>% select(chr, start, end, type, C)
-  colnames(adj_cns)[colnames(adj_cns) == "chr"] <- "chromosome"
-  adj_cns$log2 <- log(adj_cns$C/2, 2)
-  adj_cns$log2 <- ifelse(adj_cns$C < 0.4, -2.5, adj_cns$log2)
-  adj_cns$loh <- adj_cns$type %in% c("COPY-NEUTRAL LOH", "LOH", "WHOLE ARM COPY-NEUTRAL LOH", "WHOLE ARM LOH") | adj_cns$C < 1.5
+  adj_bygene$all_genes <- rep(TRUE, nrow(adj_bygene))
+  adj_bygene <- left_join(adj_bygene, heme, by=c("gene"))
+  adj_bygene <- left_join(adj_bygene, solid, by=c("gene"))
+  
+  adj_cns <- loh_file %>% select(chr, start, end, type, C) %>% mutate(cn = C, chromosome = chr)
+  adj_cns$log2 <- log(adj_cns$cn/2, 2)
+  adj_cns$log2 <- ifelse(adj_cns$cn < 0.4, -2.5, adj_cns$log2)
+  adj_cns$loh <- adj_cns$type %in% c("COPY-NEUTRAL LOH", "LOH", "WHOLE ARM COPY-NEUTRAL LOH", "WHOLE ARM LOH")
   
   variants <- variants_file
   variants$AR <- round(variants$AR, 2)
@@ -234,99 +204,36 @@ function(input, output, session) {
   ploidy <- metadata$Ploidy
   
   adj_by_gene <- adj_bygene %>% 
-    mutate(m = (start+end)/2, cn = C)
+    mutate(m = (start+end)/2)#, cn = C)
   
   adj_gl <- filter(adj_cns, log2 < log((ploidy-0.5)/2,2) | log2 > log((ploidy+0.5)/2,2) | loh == TRUE) #only show segments +/- 0.5 of plidy AND any LOH segments
   
-  adj_colors <- ifelse(adj_by_gene$C == 2, "white", blue)
+  adj_colors <- ifelse(adj_by_gene$cn == 2, white, blue)
   adj_colors <- ifelse(adj_by_gene$loh == TRUE, black, adj_colors)
   adj_colors <- ifelse(adj_by_gene$mutation == TRUE, pink, adj_colors)
-  adj_colors2 <- ifelse(adj_colors == "white", green, adj_colors)
+  adj_colors2 <- ifelse(adj_colors == white, green, adj_colors)
   adj_colors2 <- ifelse(adj_colors == pink & adj_by_gene$loh == TRUE, black, adj_colors2)
   adj_by_gene$marker_color <- adj_colors
   adj_by_gene$outline_color <- adj_colors2
   
   cytoband_data <- read.csv("cytoband_data.csv")
   
-  adj_chromosomes <- c(paste0("adj_chr", "1":"22"), "adj_chrX", "adj_chrY")
-  for(i in c(1:length(adj_chromosomes))){
-    
-    adj_chr <- filter(adj_by_gene, chromosome == gsub("adj_", "", adj_chromosomes[i]))
-    assign(paste0(adj_chromosomes[i]), adj_chr)
-    
-    adj_chr_gl <- filter(adj_gl, chromosome == gsub("adj_", "", adj_chromosomes[i]))
-    assign(paste0(adj_chromosomes[i], "_gl"), adj_chr_gl)
-    
-    seg_colors <- ifelse(get(paste0(adj_chromosomes[i],"_gl"))$loh == TRUE, black, orange)
-    
-    out_of_range <- ifelse(get(adj_chromosomes[i])$C > 64, " - log-2 value outside range of y axis", "")
-    
-    adj_plot <- plot_ly(source = "b", type = 'scatter', mode = 'markers') %>%
-      add_trace(x = get(adj_chromosomes[i])$m, 
-                y = get(adj_chromosomes[i])$mean_log2, 
-                text = paste0(get(adj_chromosomes[i])$gene, " (", round(get(adj_chromosomes[i])$C,2), " copies)", out_of_range), 
-                hoverinfo = 'text',
-                marker = list(color = #adj_colors,
-                                get(adj_chromosomes[i])$marker_color,
-                              line = list(color = get(adj_chromosomes[i])$outline_color),
-                              size = 2*log(get(adj_chromosomes[i])$total_weight+1)),
-                showlegend = F) %>%
-      add_segments(x = 0, xend = max(c(get(adj_chromosomes[i])$m,0)), 
-                   y = log((ploidy-0.5)/2, 2), yend = log((ploidy-0.5)/2, 2), line = list(color = "gray", width = 1, dash = "dot"), showlegend = F) %>%
-      add_segments(x = 0, xend = max(c(get(adj_chromosomes[i])$m,0)), 
-                   y = log((ploidy+0.5)/2, 2), yend = log((ploidy+0.5)/2, 2), line = list(color = "gray", width = 1, dash = "dot"), showlegend = F) %>%
-      layout(yaxis=list(
-        title = "log(2) copy number ratio", titlefont = list(size = 8), range = c(-3, 6)))
-    
-    if(nrow(get(paste0(adj_chromosomes[i], "_gl")))>0){
-      for(j in 1:nrow(get(paste0(adj_chromosomes[i], "_gl")))){
-        adj_plot <- adj_plot %>% add_segments(
-          x = get(paste0(adj_chromosomes[i], "_gl"))$start[j], xend = get(paste0(adj_chromosomes[i], "_gl"))$end[j], 
-          y = get(paste0(adj_chromosomes[i], "_gl"))$log2[j], yend = get(paste0(adj_chromosomes[i], "_gl"))$log2[j], 
-          color = I(seg_colors[j]),
-          text = paste0("segment: ", get(paste0(adj_chromosomes[i], "_gl"))$start[j], "-", get(paste0(adj_chromosomes[i], "_gl"))$end[j]),
-          hoverinfo = 'text',
-          line = list(width = 3), 
-          showlegend = F)
-      }
-    }
-    
-    cytoband_chrom <- filter(cytoband_data, chrom == gsub("adj_", "", adj_chromosomes[i]))
-    
-    subplot <- adj_plot %>% layout(
-      annotations = list(x = 40e6 , y = 6, text = gsub("adj_", "", adj_chromosomes[i]), showarrow= F), 
-      xaxis = list(range = c(0, 250e6), dtick = 100e6), yaxis = list(range(-3,6))) #%>%
-    
-    adj_plot <- adj_plot %>% 
-      add_trace(x = cytoband_chrom$chromStart, y = 6, xaxis = 'x2', showlegend = F, marker = list(size = 0.1), hoverinfo = 'skip') %>%
-      layout(title = gsub("adj_", "", adj_chromosomes[i]),
-        xaxis = list(range = c(0, max(cytoband_chrom$chromEnd)), zeroline = TRUE, showline = TRUE),
-        xaxis2 = list(range = c(0, max(cytoband_chrom$chromEnd)),
-                      ticktext = as.list(cytoband_chrom$name), tickvals = as.list(cytoband_chrom$chromStart),
-                      tickfont = list(size = 8), tickmode = "array", tickangle = 270, side = "top",
-                      overlaying = 'x', zeroline = TRUE, autorange = FALSE, matches = 'x'),
-          margin = list(t = 80)) 
-    
-    assign(paste0(adj_chromosomes[i],"_plot"), adj_plot)
-    assign(paste0(adj_chromosomes[i], "_subplot"), subplot)
-    
-  }
+  adj_gene_list <- reactive({ switch(input$adj_gene_panel,
+                                  "all genes" = adj_by_gene$gene,
+                                  "CPD Hematologic Malignancies Panel" = heme$gene,
+                                  "CPD Solid Tumor Panel" = solid$gene) 
+  })
   
-  adj_all_plot <- subplot(adj_chr1_subplot, adj_chr2_subplot, adj_chr3_subplot,
-                          adj_chr4_subplot, adj_chr5_subplot, adj_chr6_subplot,
-                          adj_chr7_subplot, adj_chr8_subplot, adj_chr9_subplot,
-                          adj_chr10_subplot, adj_chr11_subplot, adj_chr12_subplot,
-                          adj_chr13_subplot, adj_chr14_subplot, adj_chr15_subplot,
-                          adj_chr16_subplot, adj_chr17_subplot, adj_chr18_subplot,
-                          adj_chr19_subplot, adj_chr20_subplot, adj_chr21_subplot,
-                          adj_chr22_subplot, adj_chrX_subplot, adj_chrY_subplot,
-                          nrows=9, shareY = TRUE, 
-                          shareX = TRUE) %>%
-    layout(autosize = F, height = 1200)
+  output$adj_chr_plot <- renderPlotly({ getPlots(adj_by_gene, adj_gl, cytoband_data, ploidy, adj_gene_list(), input$adj_chr, adjusted = TRUE) })
   
-  adj_plot_todisplay <- reactive({ get(paste0("adj_", input$adj_chr, "_plot")) })
   
-  output$adj_chr_plot <- renderPlotly({ adj_plot_todisplay() })
+  observe({
+    updateSelectInput(session, "adj_gene", choices = switch(input$adj_gene_panel,
+                                                  "all genes" = c("", sort(adj_by_gene$gene)),
+                                                  "CPD Hematologic Malignancies Panel" = c("", sort(heme$gene)),
+                                                  "CPD Solid Tumor Panel" = c("", sort(solid$gene)))
+    )})
+  
   
   observe({
     updateSelectInput(session, "adj_chr", selected = as.character(adj_by_gene[adj_by_gene$gene==input$adj_gene,]$chromosome[1]))
@@ -348,7 +255,10 @@ function(input, output, session) {
   
   adjusted_cn <- eventReactive(input$adj_gene,{
     if(nchar(input$adj_gene) > 1){
-      paste0(input$adj_gene, " (", round(filter(adj_by_gene, gene == input$adj_gene)$start/1e6,2), "M", "-", round(filter(adj_by_gene, gene == input$adj_gene)$end/1e6,2), "M", ")", ": ", round(filter(adj_by_gene, gene == input$adj_gene)$C,2), ifelse(filter(adj_by_gene, gene == input$adj_gene)$C == 1, " copy", " copies"))
+      paste0(input$adj_gene, " (", round(filter(adj_by_gene, gene == input$adj_gene)$start/1e6,2), "M", "-", round(filter(adj_by_gene, gene == input$adj_gene)$end/1e6,2), "M", ")", ": ", 
+             round(filter(adj_by_gene, gene == input$adj_gene)$cn,2), 
+             ifelse(filter(adj_by_gene, gene == input$adj_gene)$cn == 1, " copy", " copies"),
+             ifelse(filter(adj_by_gene, gene == input$adj_gene)$loh == TRUE, ", suspected LOH", ""))
     } else paste0("")
   })
   
@@ -386,7 +296,7 @@ function(input, output, session) {
         add_trace(x = adj_seg_gene_dat()$m, 
                   y = adj_seg_gene_dat()$mean_log2, 
                   hoverinfo = 'text',
-                  text = paste0(adj_seg_gene_dat()$gene, " (", adj_seg_gene_dat()$C, " copies)"),
+                  text = paste0(adj_seg_gene_dat()$gene, " (", adj_seg_gene_dat()$cn, " copies)"),
                   marker = list(color= adj_seg_gene_dat()$marker_color,
                                 size = 3*log(adj_seg_gene_dat()$total_weight+1),
                                 line = list(color = adj_seg_gene_dat()$outline_color)),
@@ -401,5 +311,20 @@ function(input, output, session) {
                yaxis=list(tickfont = list(size = 6), title = "Copy number ratio", titlefont = list(size = 8), range = c(-3, 6)))
     } 
   })
+  
+  ##karyotype file
+  output$karyotype <- downloadHandler(
+    filename = paste0(sample, "_karyotype.pdf"),
+    content = function(file) {
+      karyo_data <- adj_cns %>% select(chr, start, end, cn, loh)
+      karyo_data$cn <- ifelse(karyo_data$cn > 6, 6, karyo_data$cn)
+      granges <- GenomicRanges::makeGRangesFromDataFrame(karyo_data, keep.extra.columns = TRUE, ignore.strand = TRUE)
+      pdf(file)
+      kp <- karyoploteR::plotKaryotype("hg38", plot.type = 2)
+      CopyNumberPlots::plotCopyNumberCalls(kp, cn.calls = granges, labels = "", label.cex = 0, cn.colors = "red_blue", loh.color = "green")
+      graphics::legend(x = "bottomright", fill = c("#EE0000", "#FFC1C1", "#E0E0E0", "#B2DFEE", "#87CEFA", "#1E90FF", "#0000FF", "green"),
+                       legend = c("0", "1", "2", "3", "4", "5", "6+", "loh"), title = "copies", bty = "n")
+      dev.off()
+    })
   
 }
