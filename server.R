@@ -8,6 +8,8 @@ library(GenomicRanges)
 #sample_path <- paste0("../../CPDC181710/")
 sample <- "CPDV193638"
 sample_path <- paste0("../../CPDV193638/")
+#sample <- "CPDC192023_xGen_20002_CapC_G8_PSL_20070_SEQ_200082_S36"
+#sample_path <- paste0("../../EGFRvIII_CDNK2A/",sample, "/")
 
 source("plot_function.R")
 
@@ -17,6 +19,16 @@ adjusted_gene_file <- read.csv(paste0(sample_path, sample, "_genes.csv"))
 loh_file <- read.csv(paste0(sample_path, sample, "_loh.csv")) #not using dna seg file, only using loh seg file for adjusted segments
 variants_file <- read.csv(paste0(sample_path, sample, "_variants.csv"))
 metadata_file <- read.csv(paste0(sample_path, sample, ".csv"))
+
+all_cbio_data <- read.csv("https://cnviz.s3.amazonaws.com/all_tcga2018_data.csv")
+
+bed_file <- read.table("../gbp.probes.hg38.bed")[,1:4]
+colnames(bed_file) <- c("chr", "start", "end", "gene")
+for(i in 1:nrow(bed_file)){
+  bed_file$gene[i] <- strsplit(bed_file$gene[i], "\\|")[[1]][1]
+}
+bed_file$m <- (bed_file$start + bed_file$end)/2
+
 
 green <- "#009E73" # normal
 blue <- "#0072B2" # out of range genes
@@ -92,6 +104,10 @@ function(input, output, session) {
     filter(cnr_target, gene == input$gene)
   })
   
+  bed_data <- eventReactive(input$gene,{
+    filter(bed_file, gene == input$gene)
+  })
+  
   test1 <- reactive({ nrow(gene_data()) })
   
   cn <- reactive({ by_gene[by_gene$gene == input$gene,]$cn[1] })
@@ -111,9 +127,11 @@ function(input, output, session) {
     if(test1() > 0 & input$chr != "all"){
       plot_ly(height = 250, type = 'scatter', mode = 'markers') %>%
         add_trace(x = gene_data()$m_probe, 
-                  y = gene_data()$log2, 
+                  y = gene_data()$log2,
+                  mode = 'markers',
                   marker = list(color='yellow', size = 15*gene_data()$weight),
                   showlegend = F) %>%
+        add_trace(x = bed_data()$m, y = rep(0, nrow(bed_data())), mode = 'markers', marker = list(color = 'black', symbol = 'x', size = 5), showlegend = F) %>%
         add_segments(x = min(gene_data()$start), xend = max(gene_data()$end), y = -0.41, yend = -0.41, line = list(color = "gray", width = 1, dash = "dot"), showlegend = F) %>%
         add_segments(x = min(gene_data()$start), xend = max(gene_data()$end), y = 0.32, yend = 0.32, line = list(color = "gray", width = 1, dash = "dot"), showlegend = F) %>%
         layout(title = paste0("probe data: ", gene_data()$gene[1], " (", cn(), " ", copy(),")"), xaxis = list(tickfont = list(size = 6), range = min(gene_data()$s), max(gene_data()$e)), yaxis=list(tickfont = list(size = 6), title = "log(2) copy number ratio", titlefont = list(size = 8), range = c(-3, 6)), paper_bgcolor='#fafafa', plot_bgcolor='#fafafa',margin = list(t = 80))
@@ -132,27 +150,33 @@ function(input, output, session) {
   })
   
   ##cbio table
-  if(exists("cbio")){
-  cbio_studyId <- reactive({cbio_studies$studyId[cbio_studies$Cancer == input$cancer]})
-  cbio_table <- reactive({ 
-    getDataByGenePanel(api = cbio, 
-                       studyId = cbio_studyId(), 
-                       genePanelId = "IMPACT468",
-                       molecularProfileId = paste0(cbio_studyId(), "_gistic"), 
-                       sampleListId = paste0(cbio_studyId(), "_cna"))
-  })
-  cbio_dat <- reactive({ data.frame(cbio_table()[[1]], stringsAsFactors = FALSE) })
   output$cbioOutput <- DT::renderDataTable({
-    req(nchar(input$cancer)>0)
-    datatable(cbio_dat() %>% group_by(hugoGeneSymbol) %>% 
-                summarise(Gain = sum(value ==1)/n(), 
-                          Amplification = sum(value == 2)/n(), 
-                          ShallowDeletion = sum(value == -1)/n(), 
-                          DeepDeletion = sum(value == -2)/n()),
+    datatable(filter(all_cbio_data, study_name == input$cancer) %>% 
+                select(hugoGeneSymbol, Gain, Amplification, ShallowDeletion, DeepDeletion), 
               rownames = FALSE) %>% 
       formatPercentage(c("Gain", "Amplification", "ShallowDeletion", "DeepDeletion"), 2)
   })
-}
+#   if(exists("cbio")){
+#   cbio_studyId <- reactive({cbio_studies$studyId[cbio_studies$Cancer == input$cancer]})
+#   cbio_table <- reactive({ 
+#     getDataByGenePanel(api = cbio, 
+#                        studyId = cbio_studyId(), 
+#                        genePanelId = "IMPACT468",
+#                        molecularProfileId = paste0(cbio_studyId(), "_gistic"), 
+#                        sampleListId = paste0(cbio_studyId(), "_cna"))
+#   })
+#   cbio_dat <- reactive({ data.frame(cbio_table()[[1]], stringsAsFactors = FALSE) })
+#   output$cbioOutput <- DT::renderDataTable({
+#     req(nchar(input$cancer)>0)
+#     datatable(cbio_dat() %>% group_by(hugoGeneSymbol) %>% 
+#                 summarise(Gain = sum(value ==1)/n(), 
+#                           Amplification = sum(value == 2)/n(), 
+#                           ShallowDeletion = sum(value == -1)/n(), 
+#                           DeepDeletion = sum(value == -2)/n()),
+#               rownames = FALSE) %>% 
+#       formatPercentage(c("Gain", "Amplification", "ShallowDeletion", "DeepDeletion"), 2)
+#   })
+# }
   
   ##adjusted data
   adj_bygene <- adjusted_gene_file %>% filter(!(gene.symbol %in% c("Antitarget", ".")), C.flagged %in% c(NA, FALSE))
