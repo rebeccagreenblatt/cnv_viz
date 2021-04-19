@@ -88,8 +88,7 @@ getPlots <- function(by_gene, gl, cytoband_data, ploidy, gene_list, chr_choice, 
     chr16_subplot, chr17_subplot, chr18_subplot,
     chr19_subplot, chr20_subplot, chr21_subplot,
     chr22_subplot, chrX_subplot, chrY_subplot,
-    nrows=9, shareY = TRUE,
-    shareX = TRUE) %>%
+    nrows=8, shareY = TRUE, shareX = TRUE) %>% 
     layout(autosize = F, height = 1200)
 
   plot_todisplay <- get(paste0(gsub("_adj", "", chr_choice), "_plot"))

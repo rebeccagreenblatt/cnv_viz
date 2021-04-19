@@ -13,22 +13,37 @@ sample_path <- paste0("../../CPDV193638/")
 
 source("plot_function.R")
 
-cnr_file <- read.table(paste0(sample_path, sample, ".final.cnr"), sep = '\t', header = TRUE)
-cns_file <- read.table(paste0(sample_path, sample, ".final.cns"), sep='\t', header = TRUE)
-adjusted_gene_file <- read.csv(paste0(sample_path, sample, "_genes.csv"))
-loh_file <- read.csv(paste0(sample_path, sample, "_loh.csv")) #not using dna seg file, only using loh seg file for adjusted segments
-variants_file <- read.csv(paste0(sample_path, sample, "_variants.csv"))
-metadata_file <- read.csv(paste0(sample_path, sample, ".csv"))
-
+cytoband_data <- read.csv("cytoband_data.csv")
 all_cbio_data <- read.csv("https://cnviz.s3.amazonaws.com/all_tcga2018_data.csv")
-
+cbio_studies <- read.csv("cbio_study_names.csv")
 bed_file <- read.table("../gbp.probes.hg38.bed")[,1:4]
 colnames(bed_file) <- c("chr", "start", "end", "gene")
 for(i in 1:nrow(bed_file)){
   bed_file$gene[i] <- strsplit(bed_file$gene[i], "\\|")[[1]][1]
 }
 bed_file$m <- (bed_file$start + bed_file$end)/2
+heme <- read.csv("hematologic_malignancies_panel.csv")
+solid <- read.csv("solid_tumor_panel.csv")
 
+#cnvkit files
+cnr_file <- read.table(paste0(sample_path, sample, ".final.cnr"), sep = '\t', header = TRUE)
+cns_file <- read.table(paste0(sample_path, sample, ".final.cns"), sep='\t', header = TRUE)
+
+#pureCN files - first have to check if pureCN passed
+extensions <- c("_genes.csv", "_loh.csv", "_variants.csv", ".csv")
+var_names <- c("adjusted_gene_file", "loh_file", "variants_file", "metadata_file")
+for(i in 1:4){
+  f <- paste0(sample_path, sample, extensions[i])
+  if(file.exists(f)){
+    assign(var_names[i], read.csv(f))
+  } else{
+    assign(var_names[i], data.frame())
+  }
+}
+
+if(nrow(adjusted_gene_file) > 0){
+  purecn_passed <- TRUE
+} else purecn_passed <- FALSE
 
 green <- "#009E73" # normal
 blue <- "#0072B2" # out of range genes
@@ -36,12 +51,6 @@ pink <- "#CC79A7" #mutation
 orange <- "#D55E00" #segment
 black <- "#000000" #LOH
 white <- "#FFFFFF"
-
-cbio <- cBioPortal()
-cbio_studies <- read.csv("cbio_study_names.csv")
-
-heme <- read.csv("hematologic_malignancies_panel.csv")
-solid <- read.csv("solid_tumor_panel.csv")
 
 function(input, output, session) {
   
@@ -156,29 +165,10 @@ function(input, output, session) {
               rownames = FALSE) %>% 
       formatPercentage(c("Gain", "Amplification", "ShallowDeletion", "DeepDeletion"), 2)
   })
-#   if(exists("cbio")){
-#   cbio_studyId <- reactive({cbio_studies$studyId[cbio_studies$Cancer == input$cancer]})
-#   cbio_table <- reactive({ 
-#     getDataByGenePanel(api = cbio, 
-#                        studyId = cbio_studyId(), 
-#                        genePanelId = "IMPACT468",
-#                        molecularProfileId = paste0(cbio_studyId(), "_gistic"), 
-#                        sampleListId = paste0(cbio_studyId(), "_cna"))
-#   })
-#   cbio_dat <- reactive({ data.frame(cbio_table()[[1]], stringsAsFactors = FALSE) })
-#   output$cbioOutput <- DT::renderDataTable({
-#     req(nchar(input$cancer)>0)
-#     datatable(cbio_dat() %>% group_by(hugoGeneSymbol) %>% 
-#                 summarise(Gain = sum(value ==1)/n(), 
-#                           Amplification = sum(value == 2)/n(), 
-#                           ShallowDeletion = sum(value == -1)/n(), 
-#                           DeepDeletion = sum(value == -2)/n()),
-#               rownames = FALSE) %>% 
-#       formatPercentage(c("Gain", "Amplification", "ShallowDeletion", "DeepDeletion"), 2)
-#   })
-# }
   
   ##adjusted data
+  if(purecn_passed){
+    output$purecn_passed <- renderText("true")
   adj_bygene <- adjusted_gene_file %>% filter(!(gene.symbol %in% c("Antitarget", ".")), C.flagged %in% c(NA, FALSE))
   colnames(adj_bygene)[colnames(adj_bygene) == "gene.symbol"] <- "gene"
   colnames(adj_bygene)[colnames(adj_bygene) == "chr"] <- "chromosome"
@@ -240,17 +230,15 @@ function(input, output, session) {
   adj_by_gene$marker_color <- adj_colors
   adj_by_gene$outline_color <- adj_colors2
   
-  cytoband_data <- read.csv("cytoband_data.csv")
-  
   adj_gene_list <- reactive({ switch(input$adj_gene_panel,
                                   "all genes" = adj_by_gene$gene,
                                   "CPD Hematologic Malignancies Panel" = heme$gene,
                                   "CPD Solid Tumor Panel" = solid$gene) 
   })
   
-  output$adj_chr_plot <- renderPlotly({ getPlots(adj_by_gene, adj_gl, cytoband_data, ploidy, adj_gene_list(), input$adj_chr, adjusted = TRUE) })
   
-  
+  output$adj_chr_plot <- renderPlotly ({ getPlots(adj_by_gene, adj_gl, cytoband_data, ploidy, adj_gene_list(), input$adj_chr, adjusted = TRUE) })
+
   observe({
     updateSelectInput(session, "adj_gene", choices = switch(input$adj_gene_panel,
                                                   "all genes" = c("", sort(adj_by_gene$gene)),
@@ -350,5 +338,7 @@ function(input, output, session) {
                        legend = c("0", "1", "2", "3", "4", "5", "6+", "loh"), title = "copies", bty = "n")
       dev.off()
     })
+  } else { output$purecn_passed <- renderText("false") }
+  outputOptions(output, "purecn_passed", suspendWhenHidden = FALSE)
   
 }
